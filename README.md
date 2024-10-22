@@ -70,7 +70,8 @@ for dynamic select statements that an ORM cannot handle as well.
 First, import the `JinjaSql` class and create an object. `JinjaSql` is thread-safe, so you can safely create one object at startup and use it everywhere.
 
 ```python
-from jinjasql import JinjaSql
+from sources.classic.sql_tools import JinjaSql
+
 j = JinjaSql()
 ```
 

@@ -3,14 +3,10 @@ from jinja2 import Environment
 from jinja2 import Template
 from jinja2.ext import Extension
 from jinja2.lexer import Token
-from jinja2.utils import Markup
+from markupsafe import Markup
 from collections.abc import Iterable
+from collections import OrderedDict
 
-try:
-    from collections import OrderedDict
-except ImportError:
-    # For Python 2.6 and less
-    from ordereddict import OrderedDict
 
 from threading import local
 from random import Random
@@ -160,6 +156,7 @@ def requires_in_clause(obj):
 def is_dictionary(obj):
     return isinstance(obj, dict)
 
+# TODO: переименовать в renderer
 class JinjaSql(object):
     # See PEP-249 for definition
     # qmark "where name = ?"
@@ -173,7 +170,10 @@ class JinjaSql(object):
     def __init__(self, env=None, param_style='format', identifier_quote_character='"'):
         self.param_style = param_style
         if identifier_quote_character not in self.VALID_ID_QUOTE_CHARS:
-            raise ValueError("identifier_quote_characters must be one of " + VALID_ID_QUOTE_CHARS)
+            raise ValueError(
+                "identifier_quote_characters must be one of " +
+                str(self.VALID_ID_QUOTE_CHARS)
+            )
         self.identifier_quote_character = identifier_quote_character
         self.env = env or Environment()
         self._prepare_environment()

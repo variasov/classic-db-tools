@@ -2,7 +2,7 @@ from testcontainers.postgres import PostgresContainer
 from testcontainers.mysql import MySqlContainer
 import sqlalchemy
 import unittest
-from jinjasql import JinjaSql
+from sources.classic.sql_tools import JinjaSql
 
 class PostgresTest(unittest.TestCase):
 

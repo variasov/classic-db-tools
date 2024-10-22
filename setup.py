@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 import os
 
-# Duplicating version from jinjasql.__init__.py
-# We can't directly import it from jinjasql,
+# Duplicating version from sql_tools.__init__.py
+# We can't directly import it from sql_tools,
 # because during installation Jinja2 isn't installed as yet
 # 
 # There are several approaches to eliminate this redundancy,
@@ -24,7 +24,7 @@ database engine / driver you are working with.
 '''
 
 sdict = {
-    'name' : 'jinjasql',
+    'name' : 'sql_tools',
     'version' : __version__,
     'description' : 'Generate SQL Queries and Corresponding Bind Parameters using a Jinja2 Template',
     'long_description' : long_description,
@@ -36,10 +36,10 @@ sdict = {
     'maintainer_email' : 'Sripathi.Krishnan@gmail.com',
     'keywords' : ['Jinja2', 'SQL', 'Python', 'Template'],
     'license' : 'MIT',
-    'packages' : ['jinjasql'],
+    'packages' : ['sql_tools'],
     'test_suite' : 'tests.all_tests',
     'install_requires': [
-        'Jinja2>=2.5,<3.0'
+        'Jinja2~=3.1'
     ],
     'classifiers' : [
         'Development Status :: 4 - Beta',
@@ -48,7 +48,6 @@ sdict = {
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',

@@ -2,8 +2,7 @@ from __future__ import unicode_literals
 import unittest
 from jinja2 import DictLoader
 from jinja2 import Environment
-from jinjasql import JinjaSql
-from jinjasql.core import InvalidBindParameterException
+from sources.classic.sql_tools import JinjaSql
 from datetime import date
 from yaml import safe_load_all
 from os.path import dirname, abspath, join
