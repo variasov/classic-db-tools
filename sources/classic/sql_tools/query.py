@@ -1,48 +1,62 @@
+from typing import Optional
+
+from jinja2 import Template
+
 from .types import Connection
+from .templates import Renderer
+from .params_styles import ParamStyleRecognizer
+from .result import Result
+
 
 class Query:
 
-    def __init__(self, template, renderer):
+    def __init__(
+            self, template: Template,
+            renderer: Renderer,
+            param_style_recognizer: ParamStyleRecognizer,
+    ):
         self.template = template
-        self.rendered = None
+        self.sql = None
         self.parameters = None
         self.renderer = renderer
+        self._recognize_param_style = param_style_recognizer.get
 
-    def _render(self, **kwargs: object):
-        self.rendered, self.parameters = self.renderer.prepare_query(
-            self.template, **kwargs,
+    def execute(
+        self,
+        conn: Connection,
+        params: Optional[list[object] | dict[str, object]] = None,
+    ) -> Result:
+        param_style = self._recognize_param_style(conn)
+        cursor = conn.cursor()
+
+        sql, ordered_params = self.renderer.prepare_query(
+            self.template, param_style, params or {},
         )
+        cursor.execute(sql, ordered_params)
 
-    def _execute(self, connect: Connection, **kwargs: object):
-        self._render(**kwargs)
+        # if isinstance(params, dict) or params is None:
+        #     sql, ordered_params = self.renderer.prepare_query(
+        #         self.template, param_style, params or {},
+        #     )
+        #     cursor.execute(sql, ordered_params)
+        # elif isinstance(params, Iterable):
+        #     sql, ordered_params = self.renderer.prepare_query(
+        #         self.template, param_style, {},
+        #     )
+        #     cursor.executemany(sql, params)
+        # else:
+        #     raise ValueError('Params must be dict or iterable of dicts')
 
-        with connect.cursor() as cursor:
-            cursor.execute(self.rendered, self.parameters)
+        return Result(cursor)
 
-            return cursor
+    def many(self, conn: Connection, **kwargs: object) -> list[object]:
+        return self.execute(conn, kwargs).many()
 
-    def many(self, connect: Connection, **kwargs: object):
-        cursor = self._execute(connect, **kwargs)
-        return cursor.fetchall()
+    def one(self, conn: Connection, **kwargs: object) -> object:
+        return self.execute(conn, kwargs).one()
 
-    def one(self, connect: Connection, **kwargs: object):
-        cursor = self._execute(connect, **kwargs)
-        if cursor.rowcount == 0:
-            return None
-        return cursor.fetchone()
+    def one_or_none(self, conn: Connection, **kwargs: object) -> object | None:
+        return self.execute(conn, kwargs).one_or_none()
 
-    def scalar(self, connect: Connection, **kwargs: object):
-        cursor = self._execute(connect, **kwargs)
-        if cursor.rowcount == 0:
-            return None
-        return cursor.fetchone()[0]
-
-    def first(self, connect: Connection, **kwargs: object):
-        cursor = self._execute(connect, **kwargs)
-        if cursor.rowcount == 0:
-            # TODO: вызвать ошибку
-            return None
-        return cursor.fetchone()
-
-    def cursor(self, connect: Connection, **kwargs: object):
-        return self._execute(connect, **kwargs)
+    def scalar(self, conn: Connection, **kwargs: object) -> object:
+        return self.execute(conn, kwargs).scalar()
