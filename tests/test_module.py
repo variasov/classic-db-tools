@@ -1,4 +1,5 @@
 import os.path
+from os import getenv
 
 from classic.sql_tools import Module
 from psycopg import connect
@@ -12,7 +13,15 @@ def queries():
 
 @pytest.fixture(scope='module')
 def connection():
-    conn = connect()
+    db_url = 'postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}'
+    params = dict(
+        db_user=getenv('DATABASE_USER'),
+        db_pass=getenv('DATABASE_PASSWORD'),
+        db_host=getenv('DATABASE_HOST', 'localhost'),
+        db_port=getenv('DATABASE_PORT', 5432),
+        db_name=getenv('DATABASE_NAME'),
+    )
+    conn = connect(conninfo=db_url.format(**params))
     yield conn
     conn.rollback()
     conn.close()
