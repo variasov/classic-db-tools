@@ -11,7 +11,7 @@ def queries():
     return Module(os.path.join(os.path.dirname(__file__), 'sql'))
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture
 def connection():
     db_url = 'postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}'
     params = dict(
@@ -27,32 +27,96 @@ def connection():
     conn.close()
 
 
-@pytest.fixture(scope='module', autouse=True)
+@pytest.fixture(autouse=True)
 def db(queries, connection):
     q = queries.from_file('tasks/ddl.sql')
     q.execute(connection)
 
-    q = queries.from_file('tasks/save.sql')
-    # q.execute(connection, [
-    #     {'name': '1'},
-    #     {'name': '2'},
-    #     {'name': '3'},
-    # ])
-    q.execute(connection, {'name': '1'})
-    q.execute(connection, {'name': '2'})
-    q.execute(connection, {'name': '3'})
+
+@pytest.fixture
+def fill_db(queries, connection):
+    values = [1, 2, 3]
+    for val in values:
+        connection.execute(
+            """
+            INSERT INTO tasks(name) VALUES (%s);
+            """, (val,)
+        )
 
 
-def test_many(queries, connection):
+def test_many(queries, connection, fill_db):
     q = queries.from_file('tasks/find_by_name.sql')
     assert q.many(connection, name='1') == [(1, '1')]
 
 
-def test_one(queries, connection):
+def test_one(queries, connection, fill_db):
     q = queries.from_file('tasks/get_by_id.sql')
     assert q.one(connection, id=1) == (1, '1')
 
 
-def test_scalar(queries, connection):
+def test_scalar(queries, connection, fill_db):
     q = queries.from_file('tasks/get_by_id.sql')
     assert q.scalar(connection, id=1) == 1
+
+
+def test_one_or_none(queries, connection, fill_db):
+    q = queries.from_file('tasks/get_by_id.sql')
+    assert q.one_or_none(connection, id=1) == (1, '1')
+
+
+def test_one_or_none_empty(queries, connection, fill_db):
+    q = queries.from_file('tasks/get_by_id.sql')
+    assert q.one_or_none(connection, id=4) is None
+
+
+def test_insert(queries, connection):
+    query = (
+        """
+        SELECT * FROM tasks;
+        """
+    )
+    assert connection.execute(query).fetchall() == []
+
+    q = queries.from_file('tasks/save.sql')
+    q.execute(connection, {'name': '1'})
+
+    result = connection.execute(query).fetchall()
+    assert result == [(1, '1')]
+
+
+def test_insert_many(queries, connection):
+    # TODO: тест не проходит, Jinja2 не воспринимает множественное вставление
+    query = (
+        """
+        SELECT * FROM tasks;
+        """
+    )
+    assert connection.execute(query).fetchall() == []
+
+    q = queries.from_file('tasks/save.sql')
+    q.execute(connection, [
+        {'name': '1'},
+        {'name': '2'},
+        {'name': '3'},
+    ])
+
+    result = connection.execute(query).fetchall()
+    assert result == [(1, '1'), (2, '2'), (3, '3')]
+
+
+def test_alter_insert_many(queries, connection):
+    query = (
+        """
+        SELECT * FROM tasks;
+        """
+    )
+    assert connection.execute(query).fetchall() == []
+
+    q = queries.from_file('tasks/insert_many.sql')
+    q.execute(
+        connection,
+        {'tasks': [{'name': '1'}, {'name': '2'}, {'name': '3'}]},
+    )
+
+    result = connection.execute(query).fetchall()
+    assert result == [(1, '1'), (2, '2'), (3, '3')]
