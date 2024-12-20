@@ -46,11 +46,13 @@ def fill_db(queries, connection):
 
 def test_many(queries, connection, fill_db):
     q = queries.from_file('tasks/find_by_name.sql')
+    #assert q.execute_many(connection, [{'name': '1'}]).many() == [(1, '1')]
     assert q.many(connection, name='1') == [(1, '1')]
 
 
 def test_one(queries, connection, fill_db):
     q = queries.from_file('tasks/get_by_id.sql')
+    #assert q.execute(connection, name=1).one() == (1, '1')
     assert q.one(connection, id=1) == (1, '1')
 
 

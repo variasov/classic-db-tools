@@ -49,6 +49,8 @@ class Query:
 
         return Result(cursor)
 
+    # TODO: добавить execute_many
+
     def many(self, conn: Connection, **kwargs: object) -> list[object]:
         return self.execute(conn, kwargs).many()
 
