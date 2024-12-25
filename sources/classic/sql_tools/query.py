@@ -49,7 +49,21 @@ class Query:
 
         return Result(cursor)
 
-    # TODO: добавить execute_many
+    # TODO: не работает
+    def execute_many(
+        self,
+        conn: Connection,
+        params_list: list[dict[str, object]],
+    ) -> Result:
+        param_style = self._recognize_param_style(conn)
+        cursor = conn.cursor()
+
+        sql, _ = self.renderer.prepare_query(
+            self.template, param_style, params_list
+        )
+        cursor.executemany(sql, params_list)
+
+        return Result(cursor)
 
     def many(self, conn: Connection, **kwargs: object) -> list[object]:
         return self.execute(conn, kwargs).many()

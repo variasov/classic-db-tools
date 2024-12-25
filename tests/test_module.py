@@ -1,9 +1,11 @@
 import os.path
 from os import getenv
+import re
 
 from classic.sql_tools import Module
 from psycopg import connect
 import pytest
+import jinja2
 
 
 @pytest.fixture(scope='module')
@@ -96,7 +98,7 @@ def test_insert_many(queries, connection):
     assert connection.execute(query).fetchall() == []
 
     q = queries.from_file('tasks/save.sql')
-    q.execute(connection, [
+    q.execute_many(connection, [
         {'name': '1'},
         {'name': '2'},
         {'name': '3'},
@@ -117,8 +119,45 @@ def test_alter_insert_many(queries, connection):
     q = queries.from_file('tasks/insert_many.sql')
     q.execute(
         connection,
-        {'tasks': [{'name': '1'}, {'name': '2'}, {'name': '3'}]},
+        {'tasks': [1, 2, 3]},
     )
 
     result = connection.execute(query).fetchall()
     assert result == [(1, '1'), (2, '2'), (3, '3')]
+
+
+def get_query(params: dict | list) -> str:
+    """
+    Идея по доработке sql в случае множественной вставки. Минус - мы работаем с
+    template, соответственно нет возможности модернизировать query
+    """
+    environment = jinja2.Environment()
+    query = "INSERT INTO tasks(name, value) VALUES ({{ name, value }});"
+    if isinstance(params, dict):  # Если передан один объект
+        template = environment.from_string(query)
+        return template.render(params)
+    elif isinstance(params, list):  # Если передан список объектов
+        values = []
+        keys = None
+        for param in params:
+            if not keys:
+                keys = tuple(param.keys())
+                values.append(tuple(param.values()))
+                continue
+
+            values.append(tuple(param[key] for key in keys))
+
+        values = ", ".join(f"({', '.join(value)})" for value in values)
+        modified_query = re.sub(r'{{.*?}}', '{{values}}', query)
+        template = environment.from_string(modified_query)
+        return template.render(values=values)
+    else:
+        raise ValueError("Invalid input")
+
+
+def test__get_query():
+    result_dict = get_query({"name": "test1", "value": "test1"})
+    result_list = get_query([{"name": "test1", "value": "test1"}, {"name": "test2", "value": "test2"}])
+
+    assert result_dict == "INSERT INTO tasks(name, value) VALUES (('test1', 'test1'));"
+    assert result_list == "INSERT INTO tasks(name, value) VALUES (('test1', 'test1'), ('test2', 'test2'));"
