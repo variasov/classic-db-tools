@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Iterable
 
 from jinja2 import Template
 
@@ -29,39 +29,18 @@ class Query:
         param_style = self._recognize_param_style(conn)
         cursor = conn.cursor()
 
-        sql, ordered_params = self.renderer.prepare_query(
-            self.template, param_style, params or {},
-        )
-        cursor.execute(sql, ordered_params)
-
-        # if isinstance(params, dict) or params is None:
-        #     sql, ordered_params = self.renderer.prepare_query(
-        #         self.template, param_style, params or {},
-        #     )
-        #     cursor.execute(sql, ordered_params)
-        # elif isinstance(params, Iterable):
-        #     sql, ordered_params = self.renderer.prepare_query(
-        #         self.template, param_style, {},
-        #     )
-        #     cursor.executemany(sql, params)
-        # else:
-        #     raise ValueError('Params must be dict or iterable of dicts')
-
-        return Result(cursor)
-
-    # TODO: не работает
-    def execute_many(
-        self,
-        conn: Connection,
-        params_list: list[dict[str, object]],
-    ) -> Result:
-        param_style = self._recognize_param_style(conn)
-        cursor = conn.cursor()
-
-        sql, _ = self.renderer.prepare_query(
-            self.template, param_style, params_list
-        )
-        cursor.executemany(sql, params_list)
+        if isinstance(params, dict) or params is None:
+            sql, ordered_params = self.renderer.prepare_query(
+                self.template, param_style, params or {},
+            )
+            cursor.execute(sql, ordered_params)
+        elif isinstance(params, Iterable):
+            sql, _ = self.renderer.prepare_query(
+                self.template, param_style, {},
+            )
+            cursor.executemany(sql, params)
+        else:
+            raise ValueError('Params must be dict or iterable of dicts')
 
         return Result(cursor)
 

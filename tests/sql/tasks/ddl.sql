@@ -1,4 +1,5 @@
-CREATE TABLE tasks(
+CREATE TABLE IF NOT EXISTS tasks(
     id serial PRIMARY KEY,
-    name varchar NULL
+    name varchar NULL,
+    value varchar NULL
 );
