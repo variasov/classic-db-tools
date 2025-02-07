@@ -1,0 +1,9 @@
+SELECT
+    tasks.id,
+    tasks.name,
+    task_status.status
+FROM tasks
+JOIN task_status ON task_status.task_id = tasks.id
+WHERE
+{% if status %} task_status.status LIKE {{ status }} AND {% endif %}
+TRUE;
