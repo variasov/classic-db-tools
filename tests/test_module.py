@@ -120,7 +120,7 @@ def test_insert_many(queries, connection):
     'value,status', [
         (1, 'ready'),
         (2, 'active'),
-        (3, 'completed')
+        (3, 'completed'),
     ]
 )
 def test_get_by_status(queries, connection, fill_db, status, value):
@@ -135,39 +135,67 @@ def test_get_by_status(queries, connection, fill_db, status, value):
     )
 
 
+def test_get_by_status_none(queries, connection, fill_db):
+    q = queries.from_file('tasks/joined_get_by_status.sql')
+
+    assert (
+        q.execute(connection).many() == [
+        (1, '1'), (2, '2'), (3, '3')
+    ]
+    )
+
+
 @pytest.mark.parametrize(
     'value,status', [
         (1, 'ready'),
         (1, 'active'),
-        (1, 'completed')
+        (1, 'completed'),
+        (1, None)
     ]
 )
 def test_count_by_status(queries, connection, fill_db, status, value):
     q = queries.from_file('tasks/count_by_status.sql')
-
-    assert (
-        q.execute(connection, {'status': status}).scalar()
-        == value
-    )
-    assert (
-        q.scalar(connection, status=status) == value
-    )
+    if status:
+        assert (
+            q.execute(connection, {'status': status}).scalar()
+            == value
+        )
+        assert (
+            q.scalar(connection, status=status) == value
+        )
+    else:
+        assert (
+            q.execute(connection).scalar()
+            == value
+        )
+        assert (
+            q.scalar(connection) == value
+        )
 
 
 @pytest.mark.parametrize(
     'value,status', [
         (1, 'ready'),
         (2, 'active'),
-        (3, 'completed')
+        (3, 'completed'),
+        (1, None),
     ]
 )
 def test_sum_tasks(queries, connection, fill_db, status, value):
     q = queries.from_file('tasks/sum_tasks.sql')
-
-    assert (
-        q.execute(connection, {'status': status}).scalar()
-        == value
-    )
-    assert (
-        q.scalar(connection, status=status) == value
-    )
+    if status:
+        assert (
+            q.execute(connection, {'status': status}).scalar()
+            == value
+        )
+        assert (
+            q.scalar(connection, status=status) == value
+        )
+    else:
+        assert (
+            q.execute(connection).scalar()
+            == value
+        )
+        assert (
+            q.scalar(connection) == value
+        )
