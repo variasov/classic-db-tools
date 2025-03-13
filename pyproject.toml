@@ -22,7 +22,12 @@ requires-python = '>=3.10'
 dependencies = [
     'Jinja2~=3.1',
 ]
-
+[project.optional-dependencies]
+dev = [
+    'pytest==6.2.5',
+    'psycopg==3.2.1',
+    'psycopg2-binary==2.9.10'
+]
 [tool.setuptools.packages.find]
 where = ['sources']
 namespaces = true

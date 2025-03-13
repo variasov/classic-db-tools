@@ -55,13 +55,13 @@ class AutoBind(Extension):
                 ):
                     param_name = self.extract_param_name(var_expr)
 
-                    var_expr.insert(1, Token(lineno, 'lparen', u'('))
-                    var_expr.append(Token(lineno, 'rparen', u')'))
-                    var_expr.append(Token(lineno, 'pipe', u'|'))
-                    var_expr.append(Token(lineno, 'name', u'bind'))
-                    var_expr.append(Token(lineno, 'lparen', u'('))
+                    var_expr.insert(1, Token(lineno, 'lparen', '('))
+                    var_expr.append(Token(lineno, 'rparen', ')'))
+                    var_expr.append(Token(lineno, 'pipe', '|'))
+                    var_expr.append(Token(lineno, 'name', 'bind'))
+                    var_expr.append(Token(lineno, 'lparen', '('))
                     var_expr.append(Token(lineno, 'string', param_name))
-                    var_expr.append(Token(lineno, 'rparen', u')'))
+                    var_expr.append(Token(lineno, 'rparen', ')'))
 
                 var_expr.append(variable_end)
                 for token in var_expr:

@@ -1,1 +1,1 @@
-INSERT INTO tasks(name) VALUES ({{ name }});
+INSERT INTO tasks(name, value) VALUES ({{ name }}, {{ value }});

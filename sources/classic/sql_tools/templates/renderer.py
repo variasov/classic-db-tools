@@ -12,7 +12,9 @@ class Renderer(threading.local):
 
     def _bind_param(self, already_bound, key, value):
         self.param_index += 1
-        new_key = '%s_%s' % (key, self.param_index)
+        # TODO: придумать, как с этим жить
+        #new_key = '%s_%s' % (key, self.param_index)
+        new_key = key
         already_bound[new_key] = value
 
         param_style = self.param_style
