@@ -30,16 +30,23 @@ result = [{
 
 def test_returning():
     func = returning(
-        ToDict('cake', 'id', {
-            'id': 'id',
-            'name': 'name',
-            'slices': 'slices',
-        }),
+        ToDict('cake', 'id', (
+            'id',
+            'name',
+            'slices',
+        )),
+        ToDict('cake', ('id', 'shard'), (
+            'id',
+            'name',
+            'slices',
+        )),
+        ToCls('another', 'id', SomeCls),
         ToDict('dude', 'dude_id', {
             'id': 'dude_id',
             'name': 'dude_name',
         }),
         OneToMany('cake', 'eaten_by', 'dude'),
+        OneToOne('cake', 'eaten_by', 'dude'),
         returns='cake'
     )
     assert func(data) == result
