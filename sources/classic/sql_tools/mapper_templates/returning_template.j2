@@ -1,0 +1,11 @@
+def mapper_func(rows):
+{% for obj in mappers %}
+{% if obj_is_mapper(obj) %}
+{{ '    ' }}{{ obj.identity_map_name }} = {}
+{% endif %}
+{% endfor %}
+{{ '    ' }}for row in rows:
+{% for obj in mappers %}
+{{ obj.to_sources(offsets=2) | join('\n') }}
+{% endfor %}
+{{ '    ' }}return list({{ returns }}s.values())

@@ -1,0 +1,3 @@
+{{ '    ' * offsets }}if '{{ attr }}' not in {{ left }}:
+{{ '    ' * (offsets + 1) }}{{ left }}['{{ attr }}'] = []
+{{ '    ' * offsets }}{{ left }}['{{ attr }}'].append({{ right }})

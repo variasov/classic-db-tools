@@ -1,0 +1,7 @@
+{{ '    ' * offsets }}{{ name }} = {{ identity_map_name }}.get(row['{{ id }}'])
+{{ '    ' * offsets }}if {{ name }} is None:
+{{ '    ' * (offsets + 1) }}{{ name }} = {{ identity_map_name }}[row['{{ id }}']] = {
+{% for key, col in cols.items() -%}
+{{ '    ' * (offsets + 2) }}'{{ key }}': row['{{ col }}'],
+{% endfor -%}
+{{ '    ' * (offsets + 1) }}}
