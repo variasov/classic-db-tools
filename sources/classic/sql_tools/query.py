@@ -1,8 +1,7 @@
-from typing import Optional, Iterable
+from typing import Optional
 
 from jinja2 import Template
 
-from .types import Connection
 from .templates import Renderer
 from .params_styles import ParamStyleRecognizer
 from .result import Result
@@ -23,35 +22,29 @@ class Query:
 
     def execute(
         self,
-        conn: Connection,
-        params: Optional[list[object] | dict[str, object]] = None,
+        conn_or_cursor,
+        batch_params: Optional[list[object]] = None,
+        /,
+        **kwargs: object,
     ) -> Result:
-        param_style = self._recognize_param_style(conn)
-        cursor = conn.cursor()
-
-        if isinstance(params, dict) or params is None:
-            sql, ordered_params = self.renderer.prepare_query(
-                self.template, param_style, params or {},
-            )
-            cursor.execute(sql, ordered_params)
-        elif isinstance(params, Iterable):
-            sql, _ = self.renderer.prepare_query(
-                self.template, param_style, {},
-            )
-            cursor.executemany(sql, params)
+        if hasattr(conn_or_cursor, 'cursor'):
+            cursor = conn_or_cursor.cursor()
+            param_style = self._recognize_param_style(conn_or_cursor)
         else:
-            raise ValueError('Params must be dict or iterable of dicts')
+            cursor = conn_or_cursor
+            param_style = self._recognize_param_style(conn_or_cursor.connection)
+
+        sql, ordered_params = self.renderer.prepare_query(
+            self.template, param_style, kwargs or {},
+        )
+
+        if batch_params is not None:
+            assert not kwargs, ('Only batch_params or kwargs '
+                                'allowed at the same time')
+            cursor.executemany(sql, batch_params)
+        else:
+            cursor.execute(sql, ordered_params)
 
         return Result(cursor)
 
-    def many(self, conn: Connection, **kwargs: object) -> list[object]:
-        return self.execute(conn, kwargs).many()
-
-    def one(self, conn: Connection, **kwargs: object) -> object:
-        return self.execute(conn, kwargs).one()
-
-    def one_or_none(self, conn: Connection, **kwargs: object) -> object | None:
-        return self.execute(conn, kwargs).one_or_none()
-
-    def scalar(self, conn: Connection, **kwargs: object) -> object:
-        return self.execute(conn, kwargs).scalar()
+    __call__ = execute

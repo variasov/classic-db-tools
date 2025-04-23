@@ -1,13 +1,18 @@
 # Генерация SQL-запросов используя Jinja-шаблон #
 
-Пример использования:
+Идея библиотеки заключается в попытке работать с SQL-запросами как с шаблонами Jinja.
+Вдохновлено [embrace](https://pypi.org/project/embrace/) и 
+[jinjasql](https://pypi.org/project/jinjasql/), у них же бралась часть кода.
 
-tasks/get_by_id.sql:
+Сначала разместим немного SQL-запросов в файлах
+(можно найти в директории test/example):
+
+example/get_by_id.sql:
 ```sql
 SELECT id, name FROM tasks WHERE id = {{ id }};
 ```
 
-tasks/get_all.sql:
+example/get_all.sql:
 ```sql
 SELECT id, name FROM tasks
 WHERE
@@ -15,56 +20,57 @@ WHERE
 TRUE;
 ```
 
-tasks/save.sql
+example/save.sql
 ```sql
 INSERT INTO tasks (name, value) VALUES ({{ name }}, {{ value }});
 ```
 
-Использование
+Затем, в Python-code приведем пример класса, использующего модуль с запросами
+
 ```python
+import os.path
+from classic.sql_tools import Module
+from psycopg import Connection
+
 queries = Module(os.path.join(os.path.dirname(__file__), 'sql'))
 
 
 class ExampleRepo:
-    
-    def __init__(self, queries: Module, connection: connect):
-        self.queries = queries
-        self.connection = connection
-    
-    def get_by_id(self, id: int):
-        q = self.queries.from_file('tasks/get_by_id.sql')
-        # Записи эквивалентны
-        result = q.execute(self.connection, {'id': id}).one()
-        result = q.one(self.connection, id=id) # (1, '1')
-        
-        return result
 
-    def get_many(self, id: int):
+    def __init__(self, queries: Module, conn: Connection):
+        self.queries = queries
+        self.conn = conn
+
+    def get_many(self):
         q = self.queries.from_file('tasks/get_all.sql')
-        # Записи эквивалентны
-        result = q.execute(self.connection, {'name': '1'}).many()
-        result = q.many(self.connection, name='1') # [(1, '1'), (2, '2')]
-        
-        return result
-    
+        return q.execute(self.conn, name='1').many()  # [(1, '1'), (2, '2')]
+
+    def get_many_another(self):
+        q = self.queries.from_file('tasks/get_all.sql')
+        # У объекта-запроса есть алиас для execute:
+        return q(self.conn, name='1')  # [(1, '1'), (2, '2')]
+
     def get_one_or_none(self, id: int):
         q = self.queries.from_file('tasks/get_by_id.sql')
-        # Записи эквивалентны
-        result = q.execute(self.connection, {'id': id}).one_or_none()
-        result = q.one_or_none(self.connection, id=id) # (1, '1') или None
-        
-        return result
-    
+        # Вернет None, если не нашлось строки
+        return q(self.conn, id=id).one()
+
+    def get_one_or_raise(self, id: int):
+        q = self.queries.from_file('tasks/get_by_id.sql')
+        # Вызовет ValueError, если не нашлось строки.
+        # Метод .scalar() ведет себя так же.
+        return q(self.conn, id=id).one(raising=True)
+
     def insert_one(self, name: str, value: str):
         q = self.queries.from_file('tasks/save.sql')
 
-        q.execute(self.connection, {'name': name, 'value': value})
-    
+        q.execute(self.conn, name=name, value=value)
+
     def insert_many(self, name: str, value: str):
         q = self.queries.from_file('tasks/save.sql')
 
         q.execute(
-            self.connection, 
+            self.conn,
             [
                 {'name': '1', 'value': 'value_1'},
                 {'name': '2', 'value': 'value_2'},
