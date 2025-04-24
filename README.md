@@ -2,113 +2,143 @@
 
 Идея библиотеки заключается в попытке работать с SQL-запросами как с шаблонами Jinja.
 Вдохновлено [embrace](https://pypi.org/project/embrace/) и 
-[jinjasql](https://pypi.org/project/jinjasql/), у них же бралась часть кода.
+[jinjasql](https://pypi.org/project/jinjasql/), оттуда же бралась часть кода.
 
-Сначала разместим немного SQL-запросов в файлах
+## Установка:
+```shell
+pip install classic-sql-tools
+```
+
+## Quickstart:
+
+```python
+from classic.sql_tools import Module
+import psycopg
+
+# Модуль - точка входа во все функции библиотеки.
+# При инстанцировании запоминает указанный путь,
+# дальнейшие обращения будут
+queries = Module('path/to/sql/templates/dir')
+
+# Создадим подключение к БД
+conn = psycopg.connect('posgresql:///some_db')
+
+# Применим схему:
+queries.tasks.ddl(conn)
+
+# Сохранение данных
+queries.tasks.save_task(conn, [
+    {'title': 'Some Task', 'body': 'Do something'},
+    {'title': 'Another Task', 'body': 'Do anything'},
+])
+
+# Получение данных
+task = queries.tasks.get_by_id(conn, id=1).one()
+# (1, 'Some Task', 'Do something')
+```
+
+В директории sql рядом с .py файлом надо разместить 3 файла
 (можно найти в директории test/example):
 
-example/get_by_id.sql:
+`sql/tasks/ddl.sql`:
 ```sql
-SELECT id, name FROM tasks WHERE id = {{ id }};
+CREATE TABLE tasks (
+    id serial PRIMARY KEY,
+    title text,
+    body text
+);
 ```
 
-example/get_all.sql:
+`sql/tasks/get_by_id.sql`:
 ```sql
-SELECT id, name FROM tasks
-WHERE
-{% if name %} name LIKE {{ name }} AND {% endif %}
-TRUE;
+SELECT id, title, body FROM tasks WHERE id = {{ id }};
 ```
 
-example/save.sql
+`sql/tasks/save_task.sql`:
 ```sql
-INSERT INTO tasks (name, value) VALUES ({{ name }}, {{ value }});
+INSERT INTO tasks (title, body) VALUES ({{ title }}, {{ body }});
 ```
 
-Затем, в Python-code приведем пример класса, использующего модуль с запросами
+## Возможности
+
 
 ```python
-import os.path
+# Класс Module - точка входа во все функции библиотеки.
 from classic.sql_tools import Module
-from psycopg import Connection
-
-queries = Module(os.path.join(os.path.dirname(__file__), 'sql'))
 
 
-class ExampleRepo:
+# При инстанцировании ему обязательно нужно 
+# передать путь до директории с шаблонами.
+queries = Module('path/to/sql')
 
-    def __init__(self, queries: Module, conn: Connection):
-        self.queries = queries
-        self.conn = conn
+# Затем можно получить шаблон запроса, лежащего,
+# например, в `./sql/some_file.sql`:
+query = queries.some_file
 
-    def get_many(self):
-        q = self.queries.from_file('tasks/get_all.sql')
-        return q.execute(self.conn, name='1').many()  # [(1, '1'), (2, '2')]
+# Module поддерживает обращение имен директорий в Python.
+# То есть объект-запрос можно получить, 
+# обратившись к атрибуту Module с названием директории.
+# Например, файл, лежащий в `./sql/some_dir/some_file.sql`:
+query = queries.some_dir.some_file
 
-    def get_many_another(self):
-        q = self.queries.from_file('tasks/get_all.sql')
-        # У объекта-запроса есть алиас для execute:
-        return q(self.conn, name='1')  # [(1, '1'), (2, '2')]
+#Вложенность может быть любой:
+query = queries.some_dir.another_dir.etc.some_file
 
-    def get_one_or_none(self, id: int):
-        q = self.queries.from_file('tasks/get_by_id.sql')
-        # Вернет None, если не нашлось строки
-        return q(self.conn, id=id).one()
+#Также можно получить объект запроса, 
+#напрямую обратившись по его относительному пути:
+query = queries.from_file('sql/some_dir/some_file.sql')
 
-    def get_one_or_raise(self, id: int):
-        q = self.queries.from_file('tasks/get_by_id.sql')
-        # Вызовет ValueError, если не нашлось строки.
-        # Метод .scalar() ведет себя так же.
-        return q(self.conn, id=id).one(raising=True)
+# И можно получить объект запроса из строкового литерала:
+query = queries.from_str('SELECT id FROM tasks')
 
-    def insert_one(self, name: str, value: str):
-        q = self.queries.from_file('tasks/save.sql')
+# После получения объект запроса можно выполнить 
+# с использованием соединения или курсора:
+import psycopg
 
-        q.execute(self.conn, name=name, value=value)
+conn = psycopg.connect('posgresql:///some_db')
 
-    def insert_many(self, name: str, value: str):
-        q = self.queries.from_file('tasks/save.sql')
+result = queries.tasks.get_by_id(conn)
+# Либо
+cursor = conn.cursor()
+result = queries.tasks.get_by_id(cursor)
 
-        q.execute(
-            self.conn,
-            [
-                {'name': '1', 'value': 'value_1'},
-                {'name': '2', 'value': 'value_2'},
-                {'name': '3', 'value': 'value_3'},
-            ],
-        )
-```
+# Также можно выполнить запрос через метод .execute:
+query = queries.tasks.get_by_id
+query.execute(conn)
 
-### Использование module
+# Объект результата нужен для удобного представления 
+# результатов запроса. У него есть методы для представления набора строк, 
+# единичных строк и единичных значений - 
+# .many(), .one() и .scalar() соответственно
 
-```python
-# Использование из файла
-queries = Module(os.path.join(os.path.dirname(__file__), 'sql'))
-q = queries.from_file('tasks/save.sql')
-```
-```python
-# Использование из строки
-q = queries.from_str('SELECT id, name FROM tasks WHERE id = {{ id }};')
-```
+# Вернет список кортежей:
+result = queries.from_str('SELECT * FROM tasks').execute(conn)
+print(result.many())
 
-### Возможности запросов
+# Вернет до 100 строк. При повторном вызове вернет следующие 100:
+result = queries.from_str('SELECT * FROM tasks').execute(conn)
+print(result.many(100))
+print(result.many(100))
 
-```python
-import quopri
+# Вернет один кортеж или None:
+result = queries.from_str(
+    'SELECT * FROM tasks WHERE id = 1'
+).execute(conn)
+print(result.one())
 
-result = q.execute(connection, {'id': 1)
+# Вернет один кортеж или исключение ValueError, 
+# если в БД ничего не нашлось:
+result = queries.from_str('SELECT * FROM tasks WHERE id = 1').execute(conn)
+print(result.one(raising=True))
 
-# Тип результата - Result. Он может возвращать:
+# Вернет один кортеж или None:
+result = queries.from_str(
+    'SELECT id FROM tasks WHERE id = 1'
+).execute(conn).scalar()
+print(result.scalar())
 
-result.one()  # (1, '1')
-result.many()  # [(1, '1'), (2, '2')]
-result.one_or_none()  # (1, '1') или None
-result.scalar()  # 1
-result.cursor()  # курсор для постепенного выполнения запроса
-
-# Так же можно использовать синтаксис:
-result = q.one(connection, {'id': 1})
-result = q.many(connection, {'id': 1})
-result = q.one_or_none(connection, {'id': 1})
-result = q.scalar(connection, {'id': 1})
+# Аналогично .one() вернет один кортеж или 
+# исключение ValueError, если в БД ничего не нашлось:
+result = queries.from_str('SELECT id FROM tasks WHERE id = 1').execute(conn)
+print(result.scalar(raising=True))
 ```

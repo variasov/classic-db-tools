@@ -3,7 +3,9 @@ SELECT
     tasks.name
     {% if status %}, task_status.status {% endif %}
 FROM tasks
-{% if status %} JOIN task_status ON task_status.task_id = tasks.id {% endif %}
+{% if status %}
+    INNER JOIN task_status ON tasks.id = task_status.task_id
+{% endif %}
 WHERE
-{% if status %} task_status.status LIKE {{ status }} AND {% endif %}
-TRUE;
+    {% if status %} task_status.status LIKE {{ status }} AND {% endif %}
+    TRUE;

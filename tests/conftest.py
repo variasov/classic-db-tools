@@ -31,7 +31,7 @@ def psycopg_conn():
 def connection(psycopg_conn):
     with psycopg_conn.transaction(
         savepoint_name='pre_test',
-        force_rollback=True
+        force_rollback=True,
     ) as conn:
         yield psycopg_conn
     psycopg_conn.rollback()

@@ -1,1 +1,5 @@
-SELECT id, name FROM tasks WHERE id = {{ id }};
+SELECT
+    id,
+    name
+FROM tasks
+WHERE id = {{ id }};

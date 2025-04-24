@@ -1,1 +1,5 @@
-SELECT * FROM tasks;
+SELECT
+    id,
+    name,
+    value
+FROM tasks;

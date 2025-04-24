@@ -11,14 +11,12 @@ def cursor(connection):
 
 
 def test_execute_from_connection(queries: Module, connection: Connection):
-    q = queries.from_file('test_render.sql')
-    result = q.execute(connection).scalar()
+    result = queries.test_render(connection).scalar()
 
     assert result == 'rendered'
 
 
 def test_execute_from_cursor(queries: Module, cursor: Cursor):
-    q = queries.from_file('test_render.sql')
-    result = q.execute(cursor).scalar()
+    result = queries.test_render(cursor).scalar()
 
     assert result == 'rendered'

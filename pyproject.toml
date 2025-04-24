@@ -4,14 +4,13 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'classic-sql-tools'
-version = '0.2.0'
-license = {file = 'LICENSE.txt'}
+version = '0.3.0'
+license='MIT'
 keywords = ['Jinja2', 'SQL', 'Python', 'Template']
 classifiers = [
     'Development Status :: 4 - Beta',
     'Environment :: Console',
     'Intended Audience :: Developers',
-    'License :: OSI Approved :: MIT License',
     'Operating System :: OS Independent',
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',
@@ -26,8 +25,21 @@ dependencies = [
 dev = [
     'pytest==6.2.5',
     'psycopg==3.2.1',
-    'psycopg2-binary==2.9.10',
+    'sqlfluff==3.4.0',
 ]
 [tool.setuptools.packages.find]
 where = ['sources']
 namespaces = true
+
+#====SQL====
+
+[tool.sqlfluff.core]
+dialect = "postgres"
+fix_even_unparsable = true
+ignore = "templating"
+
+[tool.sqlfluff.indentation]
+tab_space_size = 4
+
+[tool.sqlfluff.rules.capitalisation.keywords]
+capitalisation_policy = "upper"

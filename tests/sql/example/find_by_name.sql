@@ -1,4 +1,7 @@
-SELECT id, name FROM tasks
+SELECT
+    id,
+    name
+FROM tasks
 WHERE
-{% if name %} name LIKE {{ name }} AND {% endif %}
-TRUE;
+    {% if name %} name LIKE {{ name }} AND {% endif %}
+    TRUE;
