@@ -1,6 +1,6 @@
 import os.path
 
-from classic.sql_tools.module import Module
+from classic.sql_tools import Module
 import pytest
 import psycopg
 
@@ -13,15 +13,13 @@ def queries():
 @pytest.fixture(scope='session')
 def psycopg_conn():
     env = os.environ
-    conn = psycopg.connect(
-        conninfo=f'''
-            host={env.get('DB_HOST', 'localhost')}
-            port={env.get('DB_HOST', '5432')} 
-            dbname={env.get('DB_NAME', 'tests')} 
-            user={env.get('DB_USER', 'test')} 
-            password={env.get('DB_PASSWORD', 'test')} 
-        ''',
-    )
+    conn = psycopg.connect(f'''
+        host={env.get('DB_HOST', 'localhost')}
+        port={env.get('DB_HOST', '5432')} 
+        dbname={env.get('DB_NAME', 'tasks')} 
+        user={env.get('DB_USER', 'test')} 
+        password={env.get('DB_PASSWORD', 'test')} 
+    ''')
     yield conn
     conn.rollback()
     conn.close()

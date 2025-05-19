@@ -1,13 +1,11 @@
 import os.path
 from types import SimpleNamespace
 
-from greenlet.tests.test_throw import switch
 from jinja2 import Environment, FileSystemLoader
 
 from .templates import Renderer, AutoBind
 from .params_styles import ParamStyleRecognizer
 from .query import Query
-
 
 
 class Module:
