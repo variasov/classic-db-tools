@@ -1,5 +1,6 @@
 import os.path
 from types import SimpleNamespace
+from typing import overload, Any, Union
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -74,3 +75,9 @@ class Module:
     def from_str(self, query: str) -> Query:
         template = self.templates.from_string(query)
         return Query(template, self.renderer, self.param_style_recognizer)
+
+    @overload
+    def __getattr__(self, name: str) -> Union[Query, 'Module']: ...
+
+    def __getattr__(self, name: str) -> Any:
+        return object.__getattribute__(self, name)
