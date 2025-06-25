@@ -1,3 +1,6 @@
+import os.path
+from types import SimpleNamespace
+
 from jinja2 import Environment, FileSystemLoader
 
 from .templates import Renderer, AutoBind
@@ -42,6 +45,27 @@ class Module:
             )
         )
         self.param_style_recognizer = ParamStyleRecognizer()
+        self.load_dirs(self, self.templates.list_templates())
+
+    @staticmethod
+    def load_dirs(instance: 'Module', paths: list[str]):
+        for template_path in paths:
+            chunks = template_path.split('/')
+
+            last = instance
+            for chunk in chunks[:-1]:
+                new = getattr(last, chunk, None)
+                if new is None:
+                    new = SimpleNamespace()
+
+                setattr(last, chunk, new)
+                last = new
+
+            setattr(
+                last,
+                os.path.splitext(chunks[-1])[0],
+                instance.from_file(template_path)
+            )
 
     def from_file(self, filename: str) -> Query:
         template = self.templates.get_template(filename)
