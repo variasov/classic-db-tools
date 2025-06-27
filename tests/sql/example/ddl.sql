@@ -1,7 +1,6 @@
 CREATE TABLE IF NOT EXISTS tasks (
     id serial PRIMARY KEY,
-    name varchar NULL,
-    value varchar NULL
+    name varchar NULL
 );
 
 CREATE TABLE IF NOT EXISTS task_status (
