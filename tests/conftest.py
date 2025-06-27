@@ -30,6 +30,29 @@ def connection(psycopg_conn):
     with psycopg_conn.transaction(
         savepoint_name='pre_test',
         force_rollback=True,
-    ) as conn:
+    ):
         yield psycopg_conn
     psycopg_conn.rollback()
+
+
+@pytest.fixture
+def ddl(queries, connection):
+    queries.example.ddl(connection)
+    yield
+
+
+@pytest.fixture
+def tasks(queries, connection, ddl):
+    queries.example.save_task(connection, [
+        {'id': 1, 'name': 'First'},
+        {'id': 2, 'name': 'Second'},
+        {'id': 3, 'name': 'Third'},
+    ])
+    queries.example.save_task_statuses(connection, [
+        {'status': 'CREATED', 'task_id': 1, 'id': 1},
+        {'status': 'STARTED', 'task_id': 1, 'id': 4},
+        {'status': 'FINISHED', 'task_id': 1, 'id': 5},
+        {'status': 'CREATED', 'task_id': 2, 'id': 2},
+        {'status': 'CREATED', 'task_id': 3, 'id': 3},
+    ])
+    yield

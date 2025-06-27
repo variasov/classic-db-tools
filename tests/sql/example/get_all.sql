@@ -1,5 +1,4 @@
 SELECT
     id,
-    name,
-    value
+    name
 FROM tasks;

@@ -1,3 +1,3 @@
-INSERT INTO tasks (name, value)
-VALUES ({{ name }}, {{ value }})
+INSERT INTO tasks (id, name)
+VALUES ({{ id }}, {{ name }})
 RETURNING id;
