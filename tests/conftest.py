@@ -1,13 +1,13 @@
 import os.path
 
-from classic.sql_tools import Module
+from classic.sql_tools import Engine
 import pytest
 import psycopg
 
 
 @pytest.fixture(scope='session')
-def queries():
-    return Module(os.path.join(os.path.dirname(__file__), 'sql'))
+def engine():
+    return Engine(os.path.join(os.path.dirname(__file__), 'sql'))
 
 
 @pytest.fixture(scope='session')
@@ -36,19 +36,19 @@ def connection(psycopg_conn):
 
 
 @pytest.fixture
-def ddl(queries, connection):
-    queries.example.ddl(connection)
+def ddl(engine, connection):
+    engine.example.ddl(connection)
     yield
 
 
 @pytest.fixture
-def tasks(queries, connection, ddl):
-    queries.example.save_task(connection, [
+def tasks(engine, connection, ddl):
+    engine.example.save_task(connection, [
         {'id': 1, 'name': 'First'},
         {'id': 2, 'name': 'Second'},
         {'id': 3, 'name': 'Third'},
     ])
-    queries.example.save_task_statuses(connection, [
+    engine.example.save_task_statuses(connection, [
         {'status': 'CREATED', 'task_id': 1, 'id': 1},
         {'status': 'STARTED', 'task_id': 1, 'id': 4},
         {'status': 'FINISHED', 'task_id': 1, 'id': 5},

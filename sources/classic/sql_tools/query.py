@@ -5,20 +5,24 @@ from jinja2 import Template
 from .templates import Renderer
 from .params_styles import ParamStyleRecognizer
 from .result import Result
+from .mapper import MapperCache
 
 
 class Query:
 
     def __init__(
-            self, template: Template,
+            self,
+            template: Template,
             renderer: Renderer,
             param_style_recognizer: ParamStyleRecognizer,
+            mapper_cache: MapperCache,
     ):
         self.template = template
         self.sql = None
         self.parameters = None
         self.renderer = renderer
         self._recognize_param_style = param_style_recognizer.get
+        self._mapper_cache = mapper_cache
 
     def execute(
         self,
@@ -45,6 +49,6 @@ class Query:
         else:
             cursor.execute(sql, ordered_params)
 
-        return Result(cursor)
+        return Result(cursor, self._mapper_cache)
 
     __call__ = execute

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Annotated
 
-from classic.sql_tools import Module, ToCls, ToDict, OneToMany
+from classic.sql_tools import Engine, ToCls, ToDict, OneToMany
 from classic.components import factory
 from psycopg import Connection
 
@@ -30,8 +30,8 @@ query = '''
 '''
 
 
-def test_returning_with_cls(queries: Module, connection: Connection, ddl, tasks):
-    assert queries.from_str(query).execute(
+def test_returning_with_cls(engine: Engine, connection: Connection, ddl, tasks):
+    assert engine.from_str(query).execute(
         connection
     ).returning(
         ToCls(Task, id='id'),
@@ -53,8 +53,8 @@ def test_returning_with_cls(queries: Module, connection: Connection, ddl, tasks)
     ]
 
 
-def test_returning_with_dict(queries: Module, connection: Connection, ddl, tasks):
-    assert queries.from_str(query).execute(
+def test_returning_with_dict(engine: Engine, connection: Connection, ddl, tasks):
+    assert engine.from_str(query).execute(
         connection
     ).returning(
         ToDict('Task', id='id'),

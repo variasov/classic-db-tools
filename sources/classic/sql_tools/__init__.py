@@ -1,6 +1,6 @@
-from .module import Module
+from .engine import Engine
 from .mapper import (
     ToDict, ToCls, ToNamedTuple,
     OneToMany, OneToOne,
-    automap,
+    automap, compile_mapper,
 )

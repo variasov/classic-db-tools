@@ -8,7 +8,7 @@ from .params_styles import ParamStyleRecognizer
 from .query import Query
 
 
-class Module:
+class Engine:
     VALID_ID_QUOTE_CHARS = ('`', "'")
     VALID_PARAM_STYLES = (
         'qmark',     # qmark 'where name = ?'
@@ -45,10 +45,11 @@ class Module:
             )
         )
         self.param_style_recognizer = ParamStyleRecognizer()
+        self._mapper_cache = {}
         self.load_dirs(self, self.templates.list_templates())
 
     @staticmethod
-    def load_dirs(instance: 'Module', paths: list[str]):
+    def load_dirs(instance: 'Engine', paths: list[str]):
         for template_path in paths:
             chunks = template_path.split('/')
 
@@ -69,8 +70,18 @@ class Module:
 
     def from_file(self, filename: str) -> Query:
         template = self.templates.get_template(filename)
-        return Query(template, self.renderer, self.param_style_recognizer)
+        return Query(
+            template,
+            self.renderer,
+            self.param_style_recognizer,
+            self._mapper_cache,
+        )
 
     def from_str(self, query: str) -> Query:
         template = self.templates.from_string(query)
-        return Query(template, self.renderer, self.param_style_recognizer)
+        return Query(
+            template,
+            self.renderer,
+            self.param_style_recognizer,
+            self._mapper_cache,
+        )

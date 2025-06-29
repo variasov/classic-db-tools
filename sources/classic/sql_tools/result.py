@@ -1,13 +1,14 @@
 from typing import Any, Type
 
-from .mapper import Mapper, BoundMapper, Relationship
+from .mapper import MapperCache, compile_mapper
 from .types import Cursor
 
 
 class Result:
 
-    def __init__(self, cursor):
+    def __init__(self, cursor: Cursor, mapper_cache: MapperCache):
         self.cursor = cursor
+        self._mapper_cache = mapper_cache
 
     def many(self, batch_size: int = None):
         if batch_size:
@@ -16,65 +17,43 @@ class Result:
 
     def one(self, raising: bool = False):
         value = self.cursor.fetchone()
-        if raising and value is None:
+        if value is None and raising:
             raise ValueError
         else:
             return value
 
     def scalar(self, raising: bool = False):
         value = self.one(raising)
-        if not raising and value is None:
+        if value is None:
             return None
         return value[0]
 
     def returning(self, *params, returns: str | Type[Any]):
-        return MappedResult(self.cursor, *params, returns=returns)
+        mapper_id = (
+            *params,
+            returns,
+            *(name for name, *_ in self.cursor.description),
+        )
+        mapper = self._mapper_cache.get(mapper_id)
+        if mapper is None:
+            mapper = self._mapper_cache[mapper_id] = compile_mapper(
+                params, returns, self.cursor,
+            )
+        return MappedResult(mapper, self.cursor)
 
 
 class MappedResult:
 
-    def __init__(self, cursor: Cursor, *params, returns: str | Type[Any]):
+    def __init__(self, mapper_func, cursor: Cursor):
         self.cursor = cursor
-        self.returns = returns
-
-        self.mappers = {}
-        mappers = {
-            param.prefix: BoundMapper(cursor, param)
-            for param in params
-            if isinstance(param, Mapper)
-        }
-        for index, column_desc in enumerate(self.cursor.description):
-            try:
-                prefix, field_name = column_desc[0].split('__')
-            except ValueError:
-                continue
-
-            mapper = mappers.get(prefix)
-            if not mapper:
-                continue
-
-            mapper.set_column_map(field_name, index)
-            self.mappers[mapper.key] = mapper
-
-        self.relationships = tuple((
-            param
-            for param in params
-            if isinstance(param, Relationship)
-        ))
+        self.mapper_func = mapper_func
 
     def one(self):
-        return self._parse()[0]
+        # Так как маппер вернет dict_values,
+        # нельзя сделать self.mapper_func(self.cursor)[0],
+        # потому так
+        for row in self.mapper_func(self.cursor.fetchall()).values():
+            return row
 
     def many(self):
-        return self._parse()
-
-    def _parse(self):
-        for row in self.cursor.fetchall():
-            objects = {}
-            for mapper in self.mappers.values():
-                objects[mapper.key] = mapper.map(row), mapper
-
-            for rel in self.relationships:
-                rel.map(objects)
-
-        return list(self.mappers[self.returns].identity_map.values())
+        return list(self.mapper_func(self.cursor.fetchall()).values())

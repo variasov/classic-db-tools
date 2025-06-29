@@ -12,13 +12,13 @@ pip install classic-sql-tools
 ## Quickstart:
 
 ```python
-from classic.sql_tools import Module
+from classic.sql_tools import Engine
 import psycopg
 
 # Модуль - точка входа во все функции библиотеки.
 # При инстанцировании запоминает указанный путь,
 # дальнейшие обращения будут
-queries = Module('path/to/sql/templates/dir')
+queries = Engine('path/to/sql/templates/dir')
 
 # Создадим подключение к БД
 conn = psycopg.connect('posgresql:///some_db')
@@ -61,15 +61,13 @@ INSERT INTO tasks (title, body) VALUES ({{ title }}, {{ body }});
 
 ## Возможности
 
-
 ```python
 # Класс Module - точка входа во все функции библиотеки.
-from classic.sql_tools import Module
-
+from classic.sql_tools import Engine
 
 # При инстанцировании ему обязательно нужно 
 # передать путь до директории с шаблонами.
-queries = Module('path/to/sql')
+queries = Engine('path/to/sql')
 
 # Затем можно получить шаблон запроса, лежащего,
 # например, в `./sql/some_file.sql`:
@@ -81,11 +79,11 @@ query = queries.some_file
 # Например, файл, лежащий в `./sql/some_dir/some_file.sql`:
 query = queries.some_dir.some_file
 
-#Вложенность может быть любой:
+# Вложенность может быть любой:
 query = queries.some_dir.another_dir.etc.some_file
 
-#Также можно получить объект запроса, 
-#напрямую обратившись по его относительному пути:
+# Также можно получить объект запроса, 
+# напрямую обратившись по его относительному пути:
 query = queries.from_file('sql/some_dir/some_file.sql')
 
 # И можно получить объект запроса из строкового литерала:

@@ -1,4 +1,4 @@
-from classic.sql_tools.module import Module
+from classic.sql_tools import Engine
 from psycopg import Connection, Cursor
 import pytest
 
@@ -10,13 +10,13 @@ def cursor(connection):
     cursor.close()
 
 
-def test_execute_from_connection(queries: Module, connection: Connection):
-    result = queries.test_render(connection).scalar()
+def test_execute_from_connection(engine: Engine, connection: Connection):
+    result = engine.test_render(connection).scalar()
 
     assert result == 'rendered'
 
 
-def test_execute_from_cursor(queries: Module, cursor: Cursor):
-    result = queries.test_render(cursor).scalar()
+def test_execute_from_cursor(engine: Engine, cursor: Cursor):
+    result = engine.test_render(cursor).scalar()
 
     assert result == 'rendered'
