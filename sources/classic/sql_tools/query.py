@@ -2,10 +2,10 @@ from typing import Optional
 
 from jinja2 import Template
 
-from .templates import Renderer
+from .mapper import MapperCache
 from .params_styles import ParamStyleRecognizer
 from .result import Result
-from .mapper import MapperCache
+from .templates import Renderer
 
 
 class Query:

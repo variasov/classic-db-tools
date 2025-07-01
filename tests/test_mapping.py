@@ -34,8 +34,8 @@ def test_returning_with_cls(engine: Engine, connection: Connection, ddl, tasks):
     assert engine.from_str(query).execute(
         connection
     ).returning(
-        ToCls(Task, id='id'),
-        ToCls(TaskStatus, id='id'),
+        ToCls(Task),
+        ToCls(TaskStatus),
         OneToMany(Task, 'statuses', TaskStatus),
         returns=Task,
     ).many() == [
@@ -57,8 +57,8 @@ def test_returning_with_dict(engine: Engine, connection: Connection, ddl, tasks)
     assert engine.from_str(query).execute(
         connection
     ).returning(
-        ToDict('Task', id='id'),
-        ToDict('TaskStatus', id='id'),
+        ToDict('Task'),
+        ToDict('TaskStatus'),
         OneToMany('Task', 'statuses', 'TaskStatus'),
         returns='Task',
     ).many() == [

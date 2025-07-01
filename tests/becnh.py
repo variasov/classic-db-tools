@@ -1,6 +1,5 @@
+import logging.config
 from dataclasses import dataclass
-import time
-from typing import Annotated
 from unittest.mock import Mock
 
 from classic.sql_tools import Engine, ToCls, OneToMany
@@ -10,25 +9,25 @@ import psycopg
 
 @dataclass
 class Task:
-    id: Annotated[int, 'id']
+    id: int
     name: str
     statuses: list['TaskStatus'] = factory(list)
 
 
 @dataclass
 class TaskStatus:
-    id: Annotated[int, 'id']
+    id: int
     status: str
 
 
 query = '''
-    SELECT
-        tasks.id           AS Task__id,
-        tasks.name         AS Task__name,
-        task_status.id     AS TaskStatus__id,
-        task_status.status AS TaskStatus__status
-    FROM tasks
-    JOIN task_status ON task_status.task_id = tasks.id
+SELECT
+    tasks.id           AS Task__id,
+    tasks.name         AS Task__name,
+    task_status.id     AS TaskStatus__id,
+    task_status.status AS TaskStatus__status
+FROM tasks
+JOIN task_status ON task_status.task_id = tasks.id
 '''
 
 
@@ -44,47 +43,57 @@ def test_returning_speed(engine: Engine, connection):
         ] * 1000,
     )
     cursor.description = [
-        ('task__id', int),
-        ('task__name', str),
-        ('taskstatus__id', int),
-        ('taskstatus__status', str),
+        ('task__id', 1),
+        ('task__name', 4),
+        ('taskstatus__id', 1),
+        ('taskstatus__status', 4),
     ]
     cursor.connection = Mock(psycopg.Connection)
 
+    logging.config.dictConfig({
+        'version': 1,
+        'handlers': {
+            '': {
+                'class': 'logging.StreamHandler',
+                'level': 'INFO',
+            },
+        },
+        'loggers': {
+            'timer': {
+                'level': 'INFO',
+                'handlers': [''],
+            }
+        }
+    })
 
     for index in range(3):
-        print(f'Attempt {index}')
-
-        started_at = time.time()
-        q = engine.from_str(query).execute(
+        assert engine.from_str(query).execute(
             cursor
         ).returning(
-            ToCls(Task, id='id'),
-            ToCls(TaskStatus, id='id'),
+            ToCls(Task),
+            ToCls(TaskStatus),
             OneToMany(Task, 'statuses', TaskStatus),
             returns=Task,
-        )
+        ).many() == [
+            Task(id=1, name='First', statuses=[
+                TaskStatus(id=1, status='CREATED'),
+                TaskStatus(id=4, status='STARTED'),
+                TaskStatus(id=5, status='FINISHED'),
+            ]),
+            Task(id=2, name='Second', statuses=[
+                TaskStatus(id=2, status='CREATED'),
+            ]),
+            Task(id=3, name='Third', statuses=[
+                TaskStatus(id=3, status='CREATED'),
+            ]),
+        ]
 
-        print(
-            f'Compile: {time.time() - started_at}',
-        )
-
-        objects = q.many()
-
-        print(
-            f'Mapping: {time.time() - started_at}',
-        )
-
-    # == [
-    #     Task(id=1, name='First', statuses=[
-    #         TaskStatus(id=1, status='CREATED'),
-    #         TaskStatus(id=4, status='STARTED'),
-    #         TaskStatus(id=5, status='FINISHED'),
-    #     ]),
-    #     Task(id=2, name='Second', statuses=[
-    #         TaskStatus(id=2, status='CREATED'),
-    #     ]),
-    #     Task(id=3, name='Third', statuses=[
-    #         TaskStatus(id=3, status='CREATED'),
-    #     ]),
-    # ]
+    result = engine.from_str(query).execute(
+        cursor
+    ).returning(
+        ToCls(Task),
+        ToCls(TaskStatus),
+        OneToMany(Task, 'statuses', TaskStatus),
+        returns=Task,
+    )
+    print(result.mapper_sources)

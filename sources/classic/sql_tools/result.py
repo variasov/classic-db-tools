@@ -31,14 +31,19 @@ class Result:
     def returning(self, *params, returns: str | Type[Any]):
         mapper_id = (
             *params,
-            returns,
-            *(name for name, *_ in self.cursor.description),
+            (
+                returns
+                if isinstance(returns, str)
+                else returns.__name__.lower()
+            ),
+            *(desc[0] for desc in self.cursor.description),
         )
         mapper = self._mapper_cache.get(mapper_id)
         if mapper is None:
             mapper = self._mapper_cache[mapper_id] = compile_mapper(
                 params, returns, self.cursor,
             )
+
         return MappedResult(mapper, self.cursor)
 
 
@@ -46,14 +51,25 @@ class MappedResult:
 
     def __init__(self, mapper_func, cursor: Cursor):
         self.cursor = cursor
-        self.mapper_func = mapper_func
+        self._mapper_func = mapper_func
 
     def one(self):
         # Так как маппер вернет dict_values,
         # нельзя сделать self.mapper_func(self.cursor)[0],
         # потому так
-        for row in self.mapper_func(self.cursor.fetchall()).values():
+        for row in self.iter():
             return row
 
     def many(self):
-        return list(self.mapper_func(self.cursor.fetchall()).values())
+        return list(self.iter())
+
+    def iter(self):
+        return self._mapper_func(self.cursor.fetchall()).values()
+
+    def mapper_sources(self) -> str:
+        """
+        Возвращает строковое представление функции-маппера.
+
+        Сделано ради удобства отладки.
+        """
+        return self._mapper_func.__generated__()

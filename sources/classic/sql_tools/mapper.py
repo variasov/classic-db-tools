@@ -1,5 +1,5 @@
 import ast
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Any, Type, Hashable, TypedDict, Generator, Iterable
 
 from classic.sql_tools.types import Cursor
@@ -10,30 +10,21 @@ MapperCache = dict[Hashable, Any]
 
 
 class Mapper(ABC):
-    _id_fields: Iterable[str]
-    _cls: Type[Any]
-    _dict_name: str
-    _name: str
-
-    @property
-    def id_fields(self) -> Iterable[str]:
-        return self._id_fields
+    id_fields: str | Iterable[str]
+    name: str
+    cls: Type[Any]
 
     @property
     def id_name(self) -> str:
         return self.name + '_id'
 
     @property
-    def name(self) -> str:
-        return self._name
-
-    @property
     def dict_name(self) -> str:
         return self.name + '_map'
 
-    @property
-    def cls(self) -> Type[Any]:
-        return self._cls
+    @abstractmethod
+    def __hash__(self) -> int:
+        pass
 
 
 class ToCls(Mapper):
@@ -42,14 +33,21 @@ class ToCls(Mapper):
         self,
         cls: Type[Any],
         id: str | Iterable[str] = 'id',
-        prefix: str = None
     ):
-        self._name = prefix or cls.__name__.lower()
-        self._id = id
-        self._cls = cls
-        self._id_fields = id
-        if isinstance(self._id_fields, str):
-            self._id_fields = (self._id_fields,)
+        self.name = cls.__name__.lower()
+        self.cls = cls
+        self.id_fields = id
+
+    def __hash__(self):
+        return hash((self.cls, self.name, self.id_fields))
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            self.__class__ == other.__class__ and
+            self.cls == other.cls and
+            self.name == other.name and
+            self.id_fields == other.id_fields
+        )
 
 
 class ToDict(Mapper):
@@ -58,35 +56,67 @@ class ToDict(Mapper):
         self,
         key: str | Type[TypedDict],
         id: str | Iterable[str] = 'id',
-        prefix: str = None
     ):
         if isinstance(key, str):
-            self._cls = dict
+            self.cls = dict
         elif isinstance(key, type) and issubclass(key, TypedDict):
+            self.cls = key
             key = key.__name__
-            self._cls = key
         else:
             raise NotImplemented
 
-        self._name = (prefix or key).lower()
-        self._id_fields = id
-        if isinstance(self._id_fields, str):
-            self._id_fields = (self._id_fields,)
+        self.name = key.lower()
+        self.id_fields = id
+
+    def __hash__(self):
+        return hash((self.cls, self.name, self.id_fields))
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            self.__class__ == other.__class__ and
+            self.cls == other.cls and
+            self.name == other.name and
+            self.id_fields == other.id_fields
+        )
 
 
 class ToNamedTuple(Mapper):
     pass
 
 
-class Relationship:
+class Relationship(ABC):
     left: str
     right: str
     field: str
 
     def __init__(self, left: Key, field: str, right: Key) -> None:
-        self.left = left.lower() if isinstance(left, str) else left.__name__.lower()
-        self.right = right.lower() if isinstance(left, str) else right.__name__.lower()
         self.field = field
+
+        if isinstance(left, str):
+            self.left = left.lower()
+        else:
+            self.left = left.__name__.lower()
+
+        if isinstance(left, str):
+            self.right = right.lower()
+        else:
+            self.right = right.__name__.lower()
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            self.__class__ == other.__class__ and
+            self.left == other.left and
+            self.field == other.field and
+            self.right == other.right
+        )
+
+    def __hash__(self) -> int:
+        return hash((
+            self.__class__,
+            self.left,
+            self.field,
+            self.right,
+        ))
 
 
 class OneToOne(Relationship):
@@ -139,12 +169,17 @@ def compile_mapper(params, returns, cursor: Cursor):
         if fields_to_columns is not None:
             fields_to_columns[field_name] = index
 
-    mappers_id_columns = {
-        mapper.name: tuple(
-            mappers_field_col_maps[mapper.name][id]
-            for id in mapper.id_fields
-        ) for mapper in mappers.values()
-    }
+    mappers_id_columns = {}
+    for mapper in mappers.values():
+        if isinstance(mapper.id_fields, str):
+            mappers_id_columns[mapper.id_name] = (
+                mappers_field_col_maps[mapper.name][mapper.id_fields]
+            )
+        else:
+            mappers_id_columns[mapper.id_name] = tuple(
+                mappers_field_col_maps[mapper.name][id]
+                for id in mapper.id_fields
+            )
 
     lineno = create_line_counter()
 
@@ -181,26 +216,41 @@ def compile_mapper(params, returns, cursor: Cursor):
             mappers_relations.values(),
         ):
 
-            #  id = (row[0], row[1])
             assign_id_lineno = lineno()
-            yield ast.Assign(
-                targets=[ast.Name(id=mapper.id_name, ctx=ast.Store())],
-                value=ast.Tuple(
-                    elts=[
-                        ast.Subscript(
-                            value=ast.Name(id='row', ctx=ast.Load()),
-                            slice=ast.Constant(value=column),
-                            ctx=ast.Load(),
-                            lineno=lineno(),
-                            col_offset=col_offset,
-                        )
-                        for column in mapper_id_columns
-                    ],
-                    ctx=ast.Load(),
-                ),
-                lineno=assign_id_lineno,
-                col_offset=col_offset,
-            )
+            if isinstance(mapper.id_fields, str):
+                # id = row[0]
+                yield ast.Assign(
+                    targets=[ast.Name(id=mapper.id_name, ctx=ast.Store())],
+                    value=ast.Subscript(
+                        value=ast.Name(id='row', ctx=ast.Load()),
+                        slice=ast.Constant(value=mapper_id_columns),
+                        ctx=ast.Load(),
+                        lineno=lineno(),
+                        col_offset=col_offset,
+                    ),
+                    lineno=assign_id_lineno,
+                    col_offset=col_offset,
+                )
+            else:
+                # id = (row[0], row[1])
+                yield ast.Assign(
+                    targets=[ast.Name(id=mapper.id_name, ctx=ast.Store())],
+                    value=ast.Tuple(
+                        elts=[
+                            ast.Subscript(
+                                value=ast.Name(id='row', ctx=ast.Load()),
+                                slice=ast.Constant(value=column),
+                                ctx=ast.Load(),
+                                lineno=lineno(),
+                                col_offset=col_offset,
+                            )
+                            for column in mapper_id_columns
+                        ],
+                        ctx=ast.Load(),
+                    ),
+                    lineno=assign_id_lineno,
+                    col_offset=col_offset,
+                )
 
             # obj = identity_map.get(id)
             search_obj_lineno = lineno()
@@ -357,11 +407,15 @@ def compile_mapper(params, returns, cursor: Cursor):
         )
 
     ast_module = render_module()
-    # print(ast.unparse(ast_module))
     code = compile(ast_module, '<string>', 'exec')
     namespace = {
         mapper.cls.__name__: mapper.cls
         for mapper in mappers.values()
     }
     exec(code, namespace)
-    return namespace['mapper_func']
+    func = namespace['mapper_func']
+
+    # Ради удобства отладки добавим код маппера
+    func.__generated__ = lambda: ast.unparse(ast_module)
+
+    return func

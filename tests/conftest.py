@@ -7,7 +7,9 @@ import psycopg
 
 @pytest.fixture(scope='session')
 def engine():
-    return Engine(os.path.join(os.path.dirname(__file__), 'sql'))
+    return Engine(
+        os.path.join(os.path.dirname(__file__), 'sql')
+    )
 
 
 @pytest.fixture(scope='session')
