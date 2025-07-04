@@ -8,15 +8,14 @@ class ParamStyleRecognizer:
         self.known_styles = {}
 
     def get(self, conn: object) -> str:
-        conn_cls = conn.__class__
         try:
-            return self.known_styles[conn_cls]
+            return self.known_styles[conn.__class__]
         except KeyError:
-            modname = conn_cls.__module__
+            modname = conn.__module__
             while modname:
                 try:
                     style = sys.modules[modname].paramstyle  # type: ignore
-                    self.known_styles[conn_cls] = style
+                    self.known_styles[conn.__class__] = style
                     return style
                 except AttributeError:
                     if "." in modname:
