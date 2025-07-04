@@ -12,7 +12,7 @@ class ParamStyleRecognizer:
         try:
             return self.known_styles[conn_cls]
         except KeyError:
-            modname = conn_cls.__module__
+            modname = conn.__module__
             while modname:
                 try:
                     style = sys.modules[modname].paramstyle  # type: ignore
