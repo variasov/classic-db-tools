@@ -10,9 +10,11 @@ MapperCache = dict[Hashable, Any]
 
 
 class Mapper(ABC):
-    id_fields: str | Iterable[str]
     name: str
     cls: Type[Any]
+    id_fields: str | Iterable[str]
+
+    __slots__ = ('name', 'cls', 'id_fields')
 
     @property
     def id_name(self) -> str:
@@ -84,10 +86,12 @@ class ToNamedTuple(Mapper):
     pass
 
 
-class Relationship(ABC):
+class Relationship:
     left: str
-    right: str
     field: str
+    right: str
+
+    __slots__ = ('left', 'field', 'right')
 
     def __init__(self, left: Key, field: str, right: Key) -> None:
         self.field = field
