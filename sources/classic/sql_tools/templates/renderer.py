@@ -53,9 +53,9 @@ class Renderer(threading.local):
     def bind_in_clause(self, value):
         values = list(value)
         results = []
-        for v in values:
+        for idx, v in enumerate(values):
             results.append(
-                self._bind_param(self.bind_params, 'inclause', v)
+                self._bind_param(self.bind_params, f'inclause_{idx}', v)
             )
 
         clause = ','.join(results)
