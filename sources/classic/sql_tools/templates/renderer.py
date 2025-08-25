@@ -55,7 +55,7 @@ class Renderer(threading.local):
         results = []
         for v in values:
             results.append(
-                self._bind_param(self._thread_local.bind_params, 'inclause', v)
+                self._bind_param(self.bind_params, 'inclause', v)
             )
 
         clause = ','.join(results)
