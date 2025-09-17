@@ -3,8 +3,8 @@ requires = ['setuptools', 'wheel']
 build-backend = 'setuptools.build_meta'
 
 [project]
-name = 'classic-sql-tools'
-version = '0.4.4'
+name = 'classic-db-tools'
+version = '1.0.0'
 license = 'MIT'
 readme = 'README.md'
 keywords = ['Jinja2', 'SQL', 'Python', 'Template']
@@ -22,12 +22,17 @@ requires-python = '>=3.10'
 dependencies = [
     'Jinja2~=3.1',
 ]
+
+[project.urls]
+Homepage = "https://github.com/variasov/classic-db-tools"
+
 [project.optional-dependencies]
 dev = [
     'pytest==6.2.5',
     'psycopg==3.2.1',
     'sqlfluff==3.4.0',
 ]
+
 [tool.setuptools.packages.find]
 where = ['sources']
 namespaces = true

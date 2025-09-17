@@ -1,20 +1,16 @@
 import pytest
 
-
-@pytest.fixture
-def ddl(queries, connection):
-    queries.example.ddl(connection)
-    yield
+from classic.db_tools import Engine
 
 
 @pytest.fixture
-def tasks(queries, connection, ddl):
-    queries.example.save_task(connection, [
+def tasks(engine: Engine, ddl):
+    engine.queries.example.save_task([
         {'name': '1', 'value': 'value_1'},
         {'name': '2', 'value': 'value_2'},
         {'name': '3', 'value': 'value_3'},
     ])
-    queries.example.save_task_statuses(connection, [
+    engine.queries.example.save_task_statuses([
         {'status': 'ready', 'task_id': 1},
         {'status': 'active', 'task_id': 2},
         {'status': 'completed', 'task_id': 3},
@@ -22,47 +18,44 @@ def tasks(queries, connection, ddl):
     yield
 
 
-def test_execute(queries, connection, tasks):
-    assert queries.example.find_by_name(
-        connection, name='1',
-    ).many() == [(1, '1')]
+def test_execute(engine: Engine, tasks):
+    assert engine.queries.example.find_by_name(name='1').many() == [(1, '1')]
 
 
-def test_one(queries, connection, tasks):
-    assert queries.example.get_by_id(connection, id='1').one() == (1, '1')
+def test_one(engine: Engine, tasks):
+    assert engine.queries.example.get_by_id(id='1').one() == (1, '1')
 
 
-def test_scalar(queries, connection, tasks):
-    assert queries.example.get_by_id(connection, id='1').scalar() == 1
+def test_scalar(engine: Engine, tasks):
+    assert engine.queries.example.get_by_id(id='1').scalar() == 1
 
 
-def test_one_or_none(queries, connection, tasks):
-    assert queries.example.get_by_id(connection, id='1').one() == (1, '1')
+def test_one_or_none(engine: Engine, tasks):
+    assert engine.queries.example.get_by_id(id='1').one() == (1, '1')
 
 
-def test_insert(queries, connection, ddl):
-    assert queries.example.count(connection).scalar() == 0
+def test_insert(engine: Engine, ddl):
+    assert engine.queries.example.count().scalar() == 0
 
-    row_id = queries.example.save_task(
-        connection, name='1', value='value_1',
+    row_id = engine.queries.example.save_task(
+        name='1', value='value_1',
     ).scalar()
 
-    assert queries.example.get_all(
-        connection, id=row_id,
+    assert engine.queries.example.get_all(
+        id=row_id,
     ).one() == (row_id, '1', 'value_1')
 
 
-def test_insert_many(queries, connection, ddl):
-    assert queries.example.count(connection).scalar() == 0
+def test_insert_many(engine: Engine, ddl):
+    assert engine.queries.example.count().scalar() == 0
 
-    queries.example.save_task(connection, [
+    engine.queries.example.save_task([
         {'name': '1', 'value': 'value_1'},
         {'name': '2', 'value': 'value_2'},
         {'name': '3', 'value': 'value_3'},
     ])
 
-    q = queries.from_file('example/get_all.sql')
-    assert q(connection).many() == [
+    assert engine.queries.example.get_all().many() == [
         (1, '1', 'value_1'),
         (2, '2', 'value_2'),
         (3, '3', 'value_3'),
@@ -76,14 +69,14 @@ def test_insert_many(queries, connection, ddl):
         (3, 'completed'),
     ]
 )
-def test_get_by_status(queries, connection, tasks, status, value):
-    assert queries.example.joined_get_by_status(
-        connection, status=status,
+def test_get_by_status(engine: Engine, tasks, status, value):
+    assert engine.queries.example.joined_get_by_status(
+        status=status,
     ).one() == (value, str(value), status)
 
 
-def test_get_by_status_none(queries, connection, tasks):
-    assert queries.example.joined_get_by_status(connection).many() == [
+def test_get_by_status_none(engine: Engine, tasks):
+    assert engine.queries.example.joined_get_by_status().many() == [
         (1, '1'), (2, '2'), (3, '3'),
     ]
 
@@ -96,9 +89,9 @@ def test_get_by_status_none(queries, connection, tasks):
         (3, None)
     ]
 )
-def test_count_by_status(queries, connection, tasks, value, status):
-    assert queries.example.count_by_status(
-        connection, status=status,
+def test_count_by_status(engine: Engine, tasks, value, status):
+    assert engine.queries.example.count_by_status(
+        status=status,
     ).scalar() == value
 
 
@@ -109,7 +102,7 @@ def test_count_by_status(queries, connection, tasks, value, status):
         (3, 'completed'),
     ]
 )
-def test_sum_tasks(queries, connection, tasks, status, value):
-    assert queries.example.sum_tasks(
-        connection, status=status,
+def test_sum_tasks(engine: Engine, tasks, status, value):
+    assert engine.queries.example.sum_tasks(
+        status=status,
     ).scalar() == value

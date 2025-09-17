@@ -1,6 +1,6 @@
 from unittest.mock import Mock, MagicMock
 
-from classic.sql_tools.result import Result
+from classic.db_tools.result import Result
 import pytest
 
 
@@ -36,17 +36,17 @@ def empty_cursor():
 
 @pytest.fixture
 def result_many_row(cursor_with_many_rows):
-    return Result(cursor_with_many_rows)
+    return Result(cursor_with_many_rows, {})
 
 
 @pytest.fixture
 def result_one_row(cursor_with_one_row):
-    return Result(cursor_with_one_row)
+    return Result(cursor_with_one_row, {})
 
 
 @pytest.fixture
 def result_empty(empty_cursor):
-    return Result(empty_cursor)
+    return Result(empty_cursor, {})
 
 
 @pytest.mark.parametrize('result,value,batch', [
