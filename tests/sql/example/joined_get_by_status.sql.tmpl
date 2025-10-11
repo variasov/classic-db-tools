@@ -1,0 +1,9 @@
+SELECT
+    tasks.id,
+    tasks.name
+    {% if title %}, task_status.title {% endif %}
+FROM tasks
+INNER JOIN task_status ON tasks.id = task_status.task_id
+WHERE
+    {% if title %} task_status.title LIKE {{ title }} AND {% endif %}
+    TRUE;

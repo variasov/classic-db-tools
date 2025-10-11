@@ -1,3 +1,3 @@
-INSERT INTO task_status (status, task_id)
-VALUES ({{ status }}, {{ task_id }})
+INSERT INTO task_status (title, task_id)
+VALUES (%(title)s, %(task_id)s)
 RETURNING id;

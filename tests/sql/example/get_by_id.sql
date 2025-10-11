@@ -2,4 +2,4 @@ SELECT
     id,
     name
 FROM tasks
-WHERE id = {{ id }};
+WHERE id = %(id)s;

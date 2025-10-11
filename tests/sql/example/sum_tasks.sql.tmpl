@@ -1,8 +1,8 @@
 SELECT SUM(tasks.id)
 FROM tasks
-{% if status %}
+{% if title %}
     INNER JOIN task_status ON tasks.id = task_status.task_id
 {% endif %}
 WHERE
-    {% if status %} task_status.status LIKE {{ status }} AND {% endif %}
+    {% if title %} task_status.title LIKE {{ title }} AND {% endif %}
     TRUE;

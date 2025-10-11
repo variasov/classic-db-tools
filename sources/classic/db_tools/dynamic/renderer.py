@@ -84,22 +84,19 @@ class Renderer(threading.local):
     def prepare_query(
         self,
         template: Template,
-        param_style: str,
         data: dict[str, object],
     ):
         self.bind_params = {}
-        self.param_style = param_style
         self.param_index = 0
         try:
             query = template.render(data)
-            if param_style in ('named', 'pyformat'):
+            if self.param_style in ('named', 'pyformat'):
                 bind_params = dict(self.bind_params)
-            elif param_style in ('qmark', 'numeric', 'format', 'asyncpg'):
+            elif self.param_style in ('qmark', 'numeric', 'format', 'asyncpg'):
                 bind_params = list(self.bind_params.values())
             else:
                 raise NotImplemented
             return query, bind_params
         finally:
             del self.bind_params
-            del self.param_style
             del self.param_index

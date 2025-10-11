@@ -6,6 +6,6 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE TABLE IF NOT EXISTS task_status (
     id serial PRIMARY KEY,
-    status varchar NULL,
+    title varchar NULL,
     task_id int NULL
 )

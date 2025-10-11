@@ -1,31 +1,36 @@
-from typing import Protocol, Sequence, Optional
+from typing import Any, Protocol, Sequence, Optional, TypeAlias
+
+
+Row: TypeAlias = tuple[Any, ...]
+CursorParams: TypeAlias = dict[str, Any] | Row
+CursorDescription: TypeAlias = Sequence[tuple[str, int, int, int, int, bool]]
 
 
 class Cursor(Protocol):
     rowcount: int
-    description: Sequence[tuple[str, int, int, int, int, bool]]
+    description: CursorDescription
 
     def execute(
             self,
             operation: str,
-            parameters: dict[str, object],
+            parameters: CursorParams,
     ) -> None:
         pass
 
     def executemany(
             self,
             operation: str,
-            seq_of_parameters: Sequence[dict[str, object]],
+            seq_of_parameters: Sequence[CursorParams],
     ) -> None:
         pass
 
     def close(self) -> None:
         pass
 
-    def fetchone(self):
+    def fetchone(self) -> Row:
         pass
 
-    def fetchmany(self, size: Optional[int]):
+    def fetchmany(self, size: Optional[int]) -> Sequence[Row]:
         pass
 
     def fetchall(self):

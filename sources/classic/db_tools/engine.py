@@ -1,94 +1,80 @@
-import os.path
-from types import SimpleNamespace, TracebackType
-from typing import Callable, Optional
+from itertools import chain
+from types import TracebackType
+from typing import Callable, Any, Iterable, Generator, TypeAlias, Sequence
 import threading
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, Template
-
-from .templates import Renderer, AutoBind
+from .dynamic.query import DynamicQuery
 from .pool import ConnectionPool
-from .types import Connection
-from .result import Result
+from .static import StaticQuery
+from .types import Connection, Cursor, CursorParams
 from .params_styles import recognize_param_style
+
+from . import dynamic, static, mapping
+
+Query: TypeAlias = StaticQuery | DynamicQuery
 
 
 class Engine(threading.local):
-    VALID_ID_QUOTE_CHARS = ('`', "'")
-    VALID_PARAM_STYLES = (
-        'qmark',     # qmark 'where name = ?'
-        'numeric',   # numeric 'where name = :1'
-        'named',     # named 'where name = :name'
-        'format',    # format 'where name = %s'
-        'pyformat',  # pyformat 'where name = %(name)s'
-        'asyncpg',   # asyncpg 'where name = $1'
-    )
 
     def __init__(
             self,
-            conn_factory: Callable[[], Connection],
             templates_path: str | Path,
-            pool_size: int = 1,
-            pool_timeout: int = 5,
-            auto_reload: bool = False,
-            identifier_quote_character: str = "'",
+            pool: ConnectionPool,
+            param_style: str = None,
+            identifier_quote_char: str = "'",
     ):
-        assert identifier_quote_character in self.VALID_ID_QUOTE_CHARS
-        self.identifier_quote_character = identifier_quote_character
-
-        self.renderer = Renderer()
-
-        self.templates = Environment(
-            loader=FileSystemLoader(templates_path),
-            auto_reload=auto_reload,
-            autoescape=True,
-        )
-        self.templates.add_extension(AutoBind)
-        self.templates.filters['bind'] = self.renderer.bind
-        self.templates.filters['sqlsafe'] = self.renderer.sql_safe
-        self.templates.filters['inclause'] = self.renderer.bind_in_clause
-        self.templates.filters['identifier'] = (
-            self.renderer.build_escape_identifier_filter(
-                self.identifier_quote_character,
-            )
-        )
-        self.queries = self._load_queries(self.templates.list_templates())
-        self.pool = ConnectionPool(
-            conn_factory,
-            limit=pool_size,
-            timeout=pool_timeout,
-        )
+        self.pool = pool
         self.conn = None
+        self.param_style = param_style or self._recognize_param_style()
+        self.templates_path = templates_path
+        self.dynamic_templates = dynamic.DynamicQueriesFactory(
+            templates_path=templates_path,
+            param_style=self.param_style,
+            identifier_quote_char=identifier_quote_char,
+        )
+        self.static_templates = static.StaticQueriesFactory(templates_path)
         self.mapper_cache = {}
 
-    def _load_queries(self, paths: list[str]):
-        queries = SimpleNamespace()
-        for template_path in paths:
-            chunks = template_path.split('/')
+    def _recognize_param_style(self):
+        with self:
+            return recognize_param_style(self.conn)
 
-            last = queries
-            for chunk in chunks[:-1]:
-                new = getattr(last, chunk, None)
-                if new is None:
-                    new = SimpleNamespace()
+    def from_file(self, filename: str) -> 'LazyQuery':
+        if filename.endswith('.sql'):
+            factory = self.static_templates
+        elif filename.endswith('.sql.tmpl'):
+            factory = self.dynamic_templates
+        else:
+            raise ValueError(f'Unsupported filename extension: {filename}')
+        return LazyQuery(
+            engine=self,
+            query_factory=lambda: factory.get(filename=filename)
+        )
 
-                setattr(last, chunk, new)
-                last = new
+    def from_str(self, query: str, static: bool = False) -> 'LazyQuery':
+        if static is True:
+            factory = self.static_templates
+        elif static is False:
+            factory = self.dynamic_templates
+        else:
+            raise ValueError(f'Unknown "static" arg value: {static}')
 
-            setattr(
-                last,
-                os.path.splitext(chunks[-1])[0],
-                self.from_file(template_path)
-            )
-        return queries
+        return LazyQuery(
+            engine=self,
+            query_factory=lambda: factory.get(content=query),
+        )
 
-    def from_file(self, filename: str) -> 'Query':
-        template = self.templates.get_template(filename)
-        return Query(template, self)
-
-    def from_str(self, query: str) -> 'Query':
-        template = self.templates.from_string(query)
-        return Query(template, self)
+    @property
+    def cursor(self):
+        try:
+            return self.conn.cursor()
+        except AttributeError:
+            raise AttributeError('''
+                Trying to access cursor, while not in started state.
+                Maybe, you forgot to enter in engine ctx?:
+                >>> with engine: query.execute(...)
+            ''')
 
     def transaction(self):
         return Transaction(self.conn)
@@ -149,40 +135,208 @@ class Transaction:
         return False
 
 
-class Query:
+class LazyQuery:
 
     def __init__(
         self,
-        template: Template,
         engine: Engine,
+        query_factory: Callable[[], Query],
     ):
-        self.template = template
-        self.sql = None
-        self.parameters = None
         self.engine = engine
+
+        self.query_factory = query_factory
+        self._query = None
+
+    @property
+    def query(self):
+        query = self._query
+        if query is None:
+            query = self._query = self.query_factory()
+        return query
+
+    def return_as(self, *params: mapping.Param) -> 'LazyMapper':
+        return LazyMapper(
+            engine=self.engine,
+            query_factory=self.query_factory,
+            mapper_params=params,
+        )
 
     def execute(
         self,
-        batch_params: Optional[list[object]] = None,
+        params: CursorParams = None,
         /,
-        **kwargs: object,
-    ) -> Result:
-        connection = self.engine.conn
-        param_style = recognize_param_style(connection)
-
-        sql, ordered_params = self.engine.renderer.prepare_query(
-            self.template, param_style, kwargs or {},
+        cursor: Cursor = None,
+        **kwargs: Any,
+    ) -> Cursor:
+        return self.query.execute(
+            params or kwargs,
+            cursor or self.engine.cursor,
         )
 
-        cursor = self.engine.conn.cursor()
+    def executemany(
+        self,
+        params: Sequence[CursorParams],
+        cursor: Cursor = None,
+    ) -> Cursor:
+        return self.query.executemany(params, cursor or self.engine.cursor)
 
-        if batch_params is not None:
-            assert not kwargs, ('Only batch_params or kwargs '
-                                'allowed at the same time')
-            cursor.executemany(sql, batch_params)
+    def all(
+        self,
+        params: CursorParams = None,
+        /,
+        cursor: Cursor = None,
+        **kwargs: Any,
+    ):
+        cursor = self.query.execute(
+            params or kwargs,
+            cursor or self.engine.cursor,
+        )
+        return cursor.fetchall()
+
+    def iter(
+        self,
+        params: CursorParams = None,
+        /,
+        batch_size: int = 500,
+        cursor: Cursor = None,
+        **kwargs: Any,
+    ) -> Generator[Any, None, None]:
+        cursor = self.query.execute(
+            params or kwargs,
+            cursor or self.engine.cursor,
+        )
+        while True:
+            batch = cursor.fetchmany(batch_size)
+            if not batch:
+                return
+            for row in batch:
+                yield row
+
+    def one(
+        self,
+        params: CursorParams = None,
+        /,
+        raising: bool = False,
+        cursor: Cursor = None,
+        **kwargs: Any,
+    ) -> Any:
+        cursor = self.query.execute(
+            params or kwargs,
+            cursor or self.engine.cursor,
+        )
+        value = cursor.fetchone()
+        if raising and value is None:
+            raise ValueError
         else:
-            cursor.execute(sql, ordered_params)
+            return value
 
-        return Result(cursor, self.engine.mapper_cache)
+    def scalar(
+        self,
+        params: CursorParams = None,
+        /,
+        raising: bool = False,
+        cursor: Cursor = None,
+        **kwargs: Any,
+    ) -> Any:
+        value = self.one(
+            params or kwargs,
+            raising=raising,
+            cursor=cursor or self.engine.cursor,
+        )
+        if not raising and value is None:
+            return None
+        return value[0]
 
-    __call__ = execute
+    def rows(
+        self,
+        params: CursorParams = None,
+        /,
+        cursor: Cursor = None,
+        **kwargs: Any,
+    ) -> int:
+        """Количество строк, обработанных запросом"""
+        cursor = self.query.execute(
+            params or kwargs,
+            cursor or self.engine.cursor,
+        )
+        return cursor.rowcount
+
+
+class LazyMapper:
+
+    def __init__(
+        self,
+        engine: Engine,
+        query_factory: Callable[[], Query],
+        mapper_params: Iterable[mapping.Param],
+    ) -> None:
+        self.engine = engine
+        self.query_factory = query_factory
+        self.mapper_params = mapper_params
+        self._query = None
+        self._mapper = None
+
+    @property
+    def query(self) -> Query:
+        query = self._query
+        if query is None:
+            query = self._query = self.query_factory()
+        return query
+
+    def mapper(self, cursor: Cursor) -> Generator[Any, Any, None]:
+        columns = tuple(column[0] for column in cursor.description)
+        key = tuple(chain(self.mapper_params, columns))
+        mapper = self.engine.mapper_cache.get(key)
+        if not mapper:
+            mapper = mapping.compile_mapper(self.mapper_params, columns)
+            self.engine.mapper_cache[key] = mapper
+        return mapper()
+
+    def all(
+        self,
+        params: CursorParams = None,
+        cursor: Cursor = None,
+    ) -> Iterable[Any]:
+        return list(self.iter(params or {}, cursor=cursor))
+
+    def iter(
+        self,
+        params: CursorParams = None,
+        batch: int = 500,
+        cursor: Cursor = None,
+    ) -> Generator[Any, None, None]:
+        cursor = self.query.execute(params or {}, cursor or self.engine.cursor)
+        mapper = self.mapper(cursor)
+        next(mapper)
+        while True:
+            rows = cursor.fetchmany(batch)
+            if not rows:
+                try:
+                    last_obj = mapper.send(None)
+                except StopIteration:
+                    last_obj = None
+                finally:
+                    mapper.close()
+                    cursor.close()
+                if last_obj:
+                    yield last_obj
+                break
+            for row in rows:
+                result = mapper.send(row)
+                if result is not None:
+                    yield result
+                    next(mapper)
+
+    def one(
+        self,
+        params: CursorParams = None,
+        batch: int = 500,
+        cursor: Cursor = None,
+    ) -> Iterable[Any]:
+        iterator = self.iter(params or {}, batch, cursor or self.engine.cursor)
+        try:
+            result = next(iterator)
+        except StopIteration:
+            iterator.close()
+            result = None
+        return result
