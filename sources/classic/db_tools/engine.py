@@ -283,6 +283,7 @@ class LazyMapper(Generic[mapping.Result]):
         self.relationships = relationships
         self._query = None
         self._mapper = None
+        self._compile_mapper = mapping.compile_mapper
 
     @property
     def query(self) -> Query:
@@ -296,7 +297,7 @@ class LazyMapper(Generic[mapping.Result]):
         key = (self.result, *self.relationships, *columns)
         mapper = self.engine.mapper_cache.get(key)
         if not mapper:
-            mapper = mapping.compile_mapper(
+            mapper = self._compile_mapper(
                 self.result, self.relationships, columns,
             )
             self.engine.mapper_cache[key] = mapper
