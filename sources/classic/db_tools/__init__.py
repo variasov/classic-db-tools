@@ -1,4 +1,4 @@
 from .engine import Engine
 from .pool import ConnectionPool
-from .mapping import AsCls, OneToMany, OneToOne, compile_mapper
+from .mapping import OneToMany, OneToOne, ID
 from .scoped_connection import ScopedConnection

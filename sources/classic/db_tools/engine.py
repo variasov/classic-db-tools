@@ -1,7 +1,8 @@
-from itertools import chain
 from types import TracebackType
-from typing import Callable, Any, Iterable, Generator, TypeAlias, Sequence, \
-    Generic, Type, TypeVar
+from typing import (
+    Callable, Any, Iterable, Generator,
+    TypeAlias, Sequence, Generic,
+)
 import threading
 from pathlib import Path
 
@@ -154,11 +155,16 @@ class LazyQuery:
             query = self._query = self.query_factory()
         return query
 
-    def return_as(self, *params: mapping.Param) -> 'LazyMapper':
-        return LazyMapper(
+    def return_as(
+        self,
+        result: mapping.Result,
+        *relationships: mapping.Relationship,
+    ) -> 'LazyMapper[mapping.Result]':
+        return LazyMapper[mapping.Result](
             engine=self.engine,
             query_factory=self.query_factory,
-            mapper_params=params,
+            result=result,
+            relationships=relationships,
         )
 
     def execute(
@@ -262,20 +268,19 @@ class LazyQuery:
         return cursor.rowcount
 
 
-Result = TypeVar('Result')
-
-
-class LazyMapper(Generic[Result]):
+class LazyMapper(Generic[mapping.Result]):
 
     def __init__(
         self,
         engine: Engine,
         query_factory: Callable[[], Query],
-        mapper_params: Iterable[mapping.Param],
+        result: TypeAlias,
+        relationships: Iterable[mapping.Relationship],
     ) -> None:
         self.engine = engine
         self.query_factory = query_factory
-        self.mapper_params = mapper_params
+        self.result = result
+        self.relationships = relationships
         self._query = None
         self._mapper = None
 
@@ -288,10 +293,12 @@ class LazyMapper(Generic[Result]):
 
     def mapper(self, cursor: Cursor) -> Generator[Any, Any, None]:
         columns = tuple(column[0] for column in cursor.description)
-        key = tuple(chain(self.mapper_params, columns))
+        key = (self.result, *self.relationships, *columns)
         mapper = self.engine.mapper_cache.get(key)
         if not mapper:
-            mapper = mapping.compile_mapper(self.mapper_params, columns)
+            mapper = mapping.compile_mapper(
+                self.result, self.relationships, columns,
+            )
             self.engine.mapper_cache[key] = mapper
         return mapper()
 
@@ -301,7 +308,7 @@ class LazyMapper(Generic[Result]):
         /,
         _cursor: Cursor = None,
         **kwargs: Any,
-    ) -> Iterable[Result]:
+    ) -> list[mapping.Result]:
         return list(self.iter(params or kwargs, _cursor=_cursor))
 
     def iter(
@@ -311,7 +318,7 @@ class LazyMapper(Generic[Result]):
         _batch: int | None = 500,
         _cursor: Cursor = None,
         **kwargs: Any,
-    ) -> Generator[Result, None, None]:
+    ) -> Generator[mapping.Result, None, None]:
         _cursor = self.query.execute(
             params or kwargs,
             _cursor or self.engine.cursor,
@@ -347,7 +354,7 @@ class LazyMapper(Generic[Result]):
         _batch: int = 500,
         _cursor: Cursor = None,
         **kwargs: Any,
-    ) -> Result:
+    ) -> mapping.Result:
         iterator = self.iter(
             params or kwargs,
             _batch,
@@ -367,7 +374,7 @@ class LazyMapper(Generic[Result]):
         _batch: int = 500,
         _cursor: Cursor = None,
         **kwargs: Any,
-    ) -> Result:
+    ) -> mapping.Result:
         result = self.one_or_none(
             params or kwargs,
             _batch,

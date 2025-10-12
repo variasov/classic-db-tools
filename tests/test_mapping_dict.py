@@ -2,7 +2,7 @@ from typing import TypedDict
 
 import pytest
 
-from classic.db_tools import Engine, AsCls, OneToMany
+from classic.db_tools import Engine, OneToOne, OneToMany
 
 
 class Status(TypedDict):
@@ -49,8 +49,7 @@ def tasks(engine: Engine, ddl):
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
     assert engine.from_str(sql, static=static).return_as(
-        AsCls(Task),
-        AsCls(Status),
+        Task,
         OneToMany(Task, 'statuses', Status),
     ).all() == [
         Task(id=1, name='First', statuses=[
@@ -70,8 +69,7 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
     assert engine.from_str(sql, static=static).return_as(
-        AsCls(Task),
-        AsCls(Status),
+        Task,
         OneToMany(Task, 'statuses', Status),
     ).one() == Task(id=1, name='First', statuses=[
         Status(id=1, title='CREATED'),
@@ -83,8 +81,7 @@ def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_split__all(engine: Engine, ddl, tasks, static):
     assert engine.from_str(sql, static=static).return_as(
-        AsCls(Task),
-        AsCls(Status),
+        tuple[Task, Status],
     ).all() == [
         (Task(id=1, name='First'), Status(id=1, title='CREATED')),
         (Task(id=1, name='First'), Status(id=4, title='STARTED')),
@@ -99,9 +96,5 @@ def test_returning_with_split__one(engine: Engine, ddl, tasks, static):
     assert engine.from_str(
         sql, static=static
     ).return_as(
-        AsCls(Task),
-        AsCls(Status),
-    ).one() == (
-        Task(id=1, name='First'),
-        Status(id=1, title='CREATED'),
-    )
+        tuple[Task, Status],
+    ).one() == (Task(id=1, name='First'), Status(id=1, title='CREATED'))
