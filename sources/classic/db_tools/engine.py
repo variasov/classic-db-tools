@@ -1,6 +1,7 @@
 from itertools import chain
 from types import TracebackType
-from typing import Callable, Any, Iterable, Generator, TypeAlias, Sequence
+from typing import Callable, Any, Iterable, Generator, TypeAlias, Sequence, \
+    Generic, Type, TypeVar
 import threading
 from pathlib import Path
 
@@ -196,16 +197,16 @@ class LazyQuery:
         self,
         params: CursorParams = None,
         /,
-        batch_size: int = 500,
-        cursor: Cursor = None,
+        _batch: int = 500,
+        _cursor: Cursor = None,
         **kwargs: Any,
     ) -> Generator[Any, None, None]:
-        cursor = self.query.execute(
+        _cursor = self.query.execute(
             params or kwargs,
-            cursor or self.engine.cursor,
+            _cursor or self.engine.cursor,
         )
         while True:
-            batch = cursor.fetchmany(batch_size)
+            batch = _cursor.fetchmany(_batch)
             if not batch:
                 return
             for row in batch:
@@ -215,16 +216,16 @@ class LazyQuery:
         self,
         params: CursorParams = None,
         /,
-        raising: bool = False,
-        cursor: Cursor = None,
+        _raising: bool = False,
+        _cursor: Cursor = None,
         **kwargs: Any,
     ) -> Any:
-        cursor = self.query.execute(
+        _cursor = self.query.execute(
             params or kwargs,
-            cursor or self.engine.cursor,
+            _cursor or self.engine.cursor,
         )
-        value = cursor.fetchone()
-        if raising and value is None:
+        value = _cursor.fetchone()
+        if _raising and value is None:
             raise ValueError
         else:
             return value
@@ -233,16 +234,16 @@ class LazyQuery:
         self,
         params: CursorParams = None,
         /,
-        raising: bool = False,
-        cursor: Cursor = None,
+        _raising: bool = False,
+        _cursor: Cursor = None,
         **kwargs: Any,
     ) -> Any:
         value = self.one(
             params or kwargs,
-            raising=raising,
-            cursor=cursor or self.engine.cursor,
+            _raising=_raising,
+            _cursor=_cursor or self.engine.cursor,
         )
-        if not raising and value is None:
+        if not _raising and value is None:
             return None
         return value[0]
 
@@ -250,18 +251,21 @@ class LazyQuery:
         self,
         params: CursorParams = None,
         /,
-        cursor: Cursor = None,
+        _cursor: Cursor = None,
         **kwargs: Any,
     ) -> int:
         """Количество строк, обработанных запросом"""
         cursor = self.query.execute(
             params or kwargs,
-            cursor or self.engine.cursor,
+            _cursor or self.engine.cursor,
         )
         return cursor.rowcount
 
 
-class LazyMapper:
+Result = TypeVar('Result')
+
+
+class LazyMapper(Generic[Result]):
 
     def __init__(
         self,
@@ -294,21 +298,31 @@ class LazyMapper:
     def all(
         self,
         params: CursorParams = None,
-        cursor: Cursor = None,
-    ) -> Iterable[Any]:
-        return list(self.iter(params or {}, cursor=cursor))
+        /,
+        _cursor: Cursor = None,
+        **kwargs: Any,
+    ) -> Iterable[Result]:
+        return list(self.iter(params or kwargs, _cursor=_cursor))
 
     def iter(
         self,
         params: CursorParams = None,
-        batch: int = 500,
-        cursor: Cursor = None,
-    ) -> Generator[Any, None, None]:
-        cursor = self.query.execute(params or {}, cursor or self.engine.cursor)
-        mapper = self.mapper(cursor)
+        /,
+        _batch: int | None = 500,
+        _cursor: Cursor = None,
+        **kwargs: Any,
+    ) -> Generator[Result, None, None]:
+        _cursor = self.query.execute(
+            params or kwargs,
+            _cursor or self.engine.cursor,
+        )
+        mapper = self.mapper(_cursor)
         next(mapper)
         while True:
-            rows = cursor.fetchmany(batch)
+            if _batch:
+                rows = _cursor.fetchmany(_batch)
+            else:
+                rows = _cursor.fetchall()
             if not rows:
                 try:
                     last_obj = mapper.send(None)
@@ -316,7 +330,7 @@ class LazyMapper:
                     last_obj = None
                 finally:
                     mapper.close()
-                    cursor.close()
+                    _cursor.close()
                 if last_obj:
                     yield last_obj
                 break
@@ -326,16 +340,39 @@ class LazyMapper:
                     yield result
                     next(mapper)
 
-    def one(
+    def one_or_none(
         self,
         params: CursorParams = None,
-        batch: int = 500,
-        cursor: Cursor = None,
-    ) -> Iterable[Any]:
-        iterator = self.iter(params or {}, batch, cursor or self.engine.cursor)
+        /,
+        _batch: int = 500,
+        _cursor: Cursor = None,
+        **kwargs: Any,
+    ) -> Result:
+        iterator = self.iter(
+            params or kwargs,
+            _batch,
+            _cursor or self.engine.cursor,
+        )
         try:
             result = next(iterator)
         except StopIteration:
             iterator.close()
             result = None
+        return result
+
+    def one(
+        self,
+        params: CursorParams = None,
+        /,
+        _batch: int = 500,
+        _cursor: Cursor = None,
+        **kwargs: Any,
+    ) -> Result:
+        result = self.one_or_none(
+            params or kwargs,
+            _batch,
+            _cursor or self.engine.cursor,
+        )
+        if result is None:
+            raise ValueError('No result')
         return result
