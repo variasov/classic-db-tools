@@ -21,12 +21,11 @@ class Engine(threading.local):
             self,
             templates_path: str | Path,
             pool: ConnectionPool,
-            param_style: str = None,
             identifier_quote_char: str = "'",
     ):
         self.pool = pool
         self.conn = None
-        self.param_style = param_style or self._recognize_param_style()
+        self.param_style = self._recognize_param_style()
         self.templates_path = templates_path
         self.dynamic_templates = dynamic.DynamicQueriesFactory(
             templates_path=templates_path,

@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 ConnType = Any
 
 
-class ConnectionPoolBase:
+class ConnectionPool:
     """
-    Connection pool base class
+    A connection pool implementation using a queue to provide thread-safety.
     """
 
     #: A callable returning a db-api connection object
@@ -47,7 +47,24 @@ class ConnectionPoolBase:
     #: that it is still alive
     validate: Optional[Callable[[ConnType], bool]]
 
-    def __init__(self, connection_factory, limit=0, validator="auto"):
+    # Maintain the pool in a queue for thread/process safety
+    queue_class = queue.Queue
+    lock_class = threading.Lock
+
+    #: How long to wait for a connection to become available
+    timeout = 5
+
+    _pool: queue.Queue
+
+    def __init__(
+        self,
+        connection_factory,
+        timeout:float = 5,
+        limit=0,
+        validator="auto",
+    ):
+        self._pool = self.queue_class()
+        self.lock = self.lock_class()
         if isinstance(validator, poolvalidators.ConnectionValidator):
             self.validate = validator.validate
             self.before_release = validator.before_release
@@ -61,8 +78,25 @@ class ConnectionPoolBase:
         self.limit = limit
         self.max_validation_retries = self.limit + 3
 
-    def _getconn(self) -> ConnType:
-        raise NotImplementedError()
+        self.connections_created = 0
+        self.reached_limit = False
+        self.timeout = timeout
+
+    def _getconn(self):
+        """
+        Return a connection from the pool.
+        """
+        try:
+            return self._pool.get(block=self.reached_limit, timeout=self.timeout)
+        except queue.Empty:
+            if self.limit:
+                with self.lock:
+                    if self.reached_limit:
+                        raise exceptions.ConnectionLimitError()
+                    else:
+                        return self._connect()
+            else:
+                return self._connect()
 
     def getconn(self) -> ConnType:
         if not self.validate:
@@ -76,9 +110,6 @@ class ConnectionPoolBase:
             f"Could not validate a connection after "
             f"{self.max_validation_retries} attempts"
         )
-
-    def release(self, conn: ConnType):
-        raise NotImplementedError()
 
     def connect(self):
         """
@@ -101,53 +132,13 @@ class ConnectionPoolBase:
         self.set_validator(validator)
         return validator.validate(conn)
 
-
-class ConnectionPool(ConnectionPoolBase):
-    """
-    A connection pool implementation using a queue to provide thread-safety.
-    """
-
-    # Maintain the pool in a queue for thread/process safety
-    queue_class = queue.Queue
-    lock_class = threading.Lock
-
-    #: How long to wait for a connection to become available
-    timeout = 5
-
-    _pool: queue.Queue
-
-    def __init__(self, connection_factory, limit=0, validator="auto", timeout=timeout):
-        super(ConnectionPool, self).__init__(connection_factory, limit, validator)
-
-        self._pool = self.queue_class()
-        self.lock = self.lock_class()
-        self.connections_created = 0
-        self.reached_limit = False
-        self.timeout = timeout
-
-    def _getconn(self):
-        """
-        Return a connection from the pool.
-        """
-        try:
-            return self._pool.get(block=self.reached_limit, timeout=self.timeout)
-        except queue.Empty:
-            if self.limit:
-                with self.lock:
-                    if self.reached_limit:
-                        raise exceptions.ConnectionLimitError()
-                    else:
-                        return self._connect()
-            else:
-                return self._connect()
-
     def _connect(self):
         conn = self.connection_factory()  # type: ignore
         self.connections_created += 1
         self.reached_limit = bool(self.limit and self.connections_created >= self.limit)
         return conn
 
-    def release(self, conn):
+    def release(self, conn: ConnType):
         reuse = self.before_release(conn) if self.before_release else True
         if reuse:
             self._pool.put(conn)
@@ -158,31 +149,6 @@ class ConnectionPool(ConnectionPoolBase):
                 self.connections_created -= 1
                 self.reached_limit = self.connections_created >= self.limit
                 self.lock.release()
-
-
-class SQLAlchemyPool(ConnectionPoolBase):
-    def __init__(self, connection_factory, limit=0, validator=None):
-        if limit:
-            raise ValueError(
-                "Cannot set limit here, "
-                "configure this in SQLAlchemy connection pooling instead"
-            )
-        if validator:
-            raise ValueError(
-                "Cannot set validator here, "
-                "configure this in SQLAlchemy connection pooling instead"
-            )
-
-        def _connection_factory(sessiongetter=connection_factory):
-            return sessiongetter().connection().connection.connection
-
-        super(SQLAlchemyPool, self).__init__(_connection_factory, limit, validator)
-
-    def getconn(self):
-        return self.connection_factory()  # type: ignore
-
-    def release(self, conn):
-        pass
 
 
 class ContextManagerWrappedConnection:
