@@ -19,6 +19,7 @@ import threading
 import queue
 import logging
 
+from .params_styles import recognize_param_style
 from . import exceptions
 from . import poolvalidators
 
@@ -81,6 +82,10 @@ class ConnectionPool:
         self.connections_created = 0
         self.reached_limit = False
         self.timeout = timeout
+
+    def recognize_param_style(self):
+        with self.connect() as conn:
+            return recognize_param_style(conn)
 
     def _getconn(self):
         """

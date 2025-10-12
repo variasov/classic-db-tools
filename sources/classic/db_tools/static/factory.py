@@ -1,4 +1,5 @@
 import os
+import threading
 
 from .query import StaticQuery
 
@@ -8,6 +9,7 @@ class StaticQueriesFactory:
     def __init__(self, templates_path: str):
         self.cache = {}
         self.templates_path = templates_path
+        self.lock = threading.Lock()
 
     def get(self, filename: str = None, content: str = None) -> StaticQuery:
         if filename:
@@ -28,6 +30,7 @@ class StaticQueriesFactory:
             else:
                 raise NotImplemented
 
-            self.cache[key] = obj
+            with self.lock:
+                self.cache[key] = obj
 
         return obj

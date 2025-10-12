@@ -1,7 +1,7 @@
 from types import TracebackType
 from typing import (
     Callable, Any, Iterable, Generator,
-    TypeAlias, Sequence, Generic,
+    TypeAlias, Sequence, Generic, Hashable,
 )
 import threading
 from pathlib import Path
@@ -9,37 +9,44 @@ from pathlib import Path
 from .dynamic.query import DynamicQuery
 from .pool import ConnectionPool
 from .static import StaticQuery
-from .types import Connection, Cursor, CursorParams
-from .params_styles import recognize_param_style
+from .types import Cursor, CursorParams
+from .transaction import Transaction
+from .scoped_connection import ScopedConnection
 
 from . import dynamic, static, mapping
 
 Query: TypeAlias = StaticQuery | DynamicQuery
 
 
-class Engine(threading.local):
+class Engine:
 
     def __init__(
-            self,
-            templates_path: str | Path,
-            pool: ConnectionPool,
-            identifier_quote_char: str = "'",
+        self,
+        templates_path: str | Path,
+        pool: ConnectionPool,
+        commit_on_exit: bool = True,
+        str_templates_static_by_default: bool = False,
+        identifier_quote_char: str = "'",
     ):
         self.pool = pool
-        self.conn = None
-        self.param_style = self._recognize_param_style()
+        self.conn = ScopedConnection(pool, commit_on_exit)
         self.templates_path = templates_path
         self.dynamic_templates = dynamic.DynamicQueriesFactory(
             templates_path=templates_path,
-            param_style=self.param_style,
+            param_style=self.pool.recognize_param_style(),
             identifier_quote_char=identifier_quote_char,
         )
         self.static_templates = static.StaticQueriesFactory(templates_path)
         self.mapper_cache = {}
+        self.mapper_cache_lock = threading.Lock()
+        self.str_templates_static_by_default = str_templates_static_by_default
 
-    def _recognize_param_style(self):
-        with self:
-            return recognize_param_style(self.conn)
+    def get_mapper_from_cache(self, key: Hashable):
+        return self.mapper_cache.get(key)
+
+    def cache_mapper(self, key: Hashable, value: mapping.Mapper):
+        with self.mapper_cache_lock:
+            self.mapper_cache[key] = value
 
     def from_file(self, filename: str) -> 'LazyQuery':
         if filename.endswith('.sql'):
@@ -53,7 +60,10 @@ class Engine(threading.local):
             query_factory=lambda: factory.get(filename=filename)
         )
 
-    def from_str(self, query: str, static: bool = False) -> 'LazyQuery':
+    def from_str(self, query: str, static: bool = None) -> 'LazyQuery':
+        if static is None:
+            static = self.str_templates_static_by_default
+
         if static is True:
             factory = self.static_templates
         elif static is False:
@@ -78,11 +88,10 @@ class Engine(threading.local):
             ''')
 
     def transaction(self):
-        return Transaction(self.conn)
+        return Transaction(self.conn.__wrapped__)
 
     def __enter__(self):
-        if self.conn is None:
-            self.conn = self.pool.getconn()
+        self.conn.__enter__()
         return self
 
     def __exit__(
@@ -91,49 +100,13 @@ class Engine(threading.local):
             value: BaseException | None,
             traceback: TracebackType | None,
     ) -> bool | None:
-        if self.conn is None:
-            return
-        if self.conn.autocommit is False:
-            if type_ is None:
-                self.conn.commit()
-            else:
-                self.conn.rollback()
-        self.conn = self.pool.release(self.conn)
-        self.conn = None
-        self._autocommit = None
-        return False
+        return self.conn.__exit__(type_, value, traceback)
 
     def commit(self):
         self.conn.commit()
 
     def rollback(self):
         self.conn.rollback()
-
-
-class Transaction:
-
-    def __init__(self, conn: Connection):
-        self.conn = conn
-
-    def __enter__(self):
-        self.return_autocommit_initial = self.conn.autocommit
-        if self.conn.autocommit is True:
-            self.conn.autocommit = False
-        return self
-
-    def __exit__(
-            self,
-            type_: type[BaseException] | None,
-            value: BaseException | None,
-            traceback: TracebackType | None,
-    ) -> bool | None:
-        if type_ is None:
-            self.conn.commit()
-        else:
-            self.conn.rollback()
-        if self.return_autocommit_initial:
-            self.conn.autocommit = True
-        return False
 
 
 class LazyQuery:
@@ -295,12 +268,12 @@ class LazyMapper(Generic[mapping.Result]):
     def mapper(self, cursor: Cursor) -> Generator[Any, Any, None]:
         columns = tuple(column[0] for column in cursor.description)
         key = (self.result, *self.relationships, *columns)
-        mapper = self.engine.mapper_cache.get(key)
+        mapper = self.engine.get_mapper_from_cache(key)
         if not mapper:
             mapper = self._compile_mapper(
                 self.result, self.relationships, columns,
             )
-            self.engine.mapper_cache[key] = mapper
+            self.engine.cache_mapper(key, mapper)
         return mapper()
 
     def all(

@@ -1,12 +1,19 @@
 [build-system]
-requires = ['setuptools', 'wheel']
+requires = [
+    "setuptools >= 40.6.0",
+    "wheel"
+]
 build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'classic-db-tools'
-version = '1.0.0'
-license = 'MIT'
+version = '0.0.1'
+authors = [
+    {name = "Sergey Variasov", email = "variasov@gmail.com"},
+]
+description = 'Classic DB tools'
 readme = 'README.md'
+license = 'MIT'
 keywords = ['Jinja2', 'SQL', 'Python', 'Template']
 classifiers = [
     'Development Status :: 4 - Beta',
