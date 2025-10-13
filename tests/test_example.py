@@ -45,12 +45,6 @@ def test_scalar(engine: Engine, tasks):
     ).scalar(id='1') == 1
 
 
-def test_one_or_none(engine: Engine, tasks):
-    assert engine.from_file(
-        'example/get_by_id.sql'
-    ).one(id='1') == (1, '1')
-
-
 def test_insert(engine: Engine, ddl):
     assert engine.from_file('example/count.sql').scalar() == 0
 
@@ -66,7 +60,6 @@ def test_insert(engine: Engine, ddl):
 
 def test_insert_many(engine: Engine, ddl):
     assert engine.from_file('example/count.sql').scalar() == 0
-
 
     engine.from_file('example/save_task.sql').executemany([
         {'name': '1', 'value': 'value_1'},

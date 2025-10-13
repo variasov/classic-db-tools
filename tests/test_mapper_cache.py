@@ -17,7 +17,7 @@ def test_queries_cache(engine: Engine):
 
     fake_compile.assert_not_called()
 
-    query.one_or_none()
-    query.one_or_none()
+    query.one()
+    query.one()
 
     fake_compile.assert_called_once()

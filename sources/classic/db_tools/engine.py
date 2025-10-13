@@ -195,7 +195,6 @@ class LazyQuery:
         self,
         params: CursorParams = None,
         /,
-        _raising: bool = False,
         _cursor: Cursor = None,
         **kwargs: Any,
     ) -> Any:
@@ -203,11 +202,7 @@ class LazyQuery:
             params or kwargs,
             _cursor or self.engine.cursor,
         )
-        value = _cursor.fetchone()
-        if _raising and value is None:
-            raise ValueError
-        else:
-            return value
+        return _cursor.fetchone()
 
     def scalar(
         self,
@@ -226,7 +221,7 @@ class LazyQuery:
             return None
         return value[0]
 
-    def rows(
+    def rowcount(
         self,
         params: CursorParams = None,
         /,
@@ -321,7 +316,7 @@ class LazyMapper(Generic[mapping.Result]):
                     yield result
                     next(mapper)
 
-    def one_or_none(
+    def one(
         self,
         params: CursorParams = None,
         /,
@@ -339,21 +334,4 @@ class LazyMapper(Generic[mapping.Result]):
         except StopIteration:
             iterator.close()
             result = None
-        return result
-
-    def one(
-        self,
-        params: CursorParams = None,
-        /,
-        _batch: int = 500,
-        _cursor: Cursor = None,
-        **kwargs: Any,
-    ) -> mapping.Result:
-        result = self.one_or_none(
-            params or kwargs,
-            _batch,
-            _cursor or self.engine.cursor,
-        )
-        if result is None:
-            raise ValueError('No result')
         return result

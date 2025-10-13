@@ -5,7 +5,7 @@ from ..types import Row
 
 from .params import Relationship
 from .context import Context
-from .renderer import render_module
+from .render import render_module
 
 
 Result = TypeVar('Result')

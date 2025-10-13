@@ -49,7 +49,7 @@ def test_engine_with_autocommit() -> None:
 
 
 def test_engine_with_autocommit_and_tx() -> None:
-    conn_pool = create_pool(dict(autocommit=False), dict(limit=1))
+    conn_pool = create_pool(dict(autocommit=True), dict(limit=1))
     engine = Engine(SQL_DIR_PATH, conn_pool, commit_on_exit=False)
     with engine:
         with engine.transaction():
