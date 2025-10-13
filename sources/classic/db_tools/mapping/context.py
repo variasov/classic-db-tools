@@ -1,14 +1,88 @@
-import inspect
 from collections import defaultdict
-import typing
 from functools import cached_property
-from typing import Any, Type, Iterable
+from typing import Iterable
+import inspect
+import typing
+from dataclasses import dataclass
+from typing import Type, Any, Literal
 
-from .params import ClsMapper, Relationship, ID
+from .params import Relationship, ID, Name
 from .types import Result
 
 
+@dataclass(slots=True, frozen=True)
+class Mapper:
+    cls: Type[Any]
+    id: ID
+    name: str
+
+    @classmethod
+    def create(
+        cls,
+        type_: Type[Any],
+        id: ID = None,
+        name: Name = None,
+    ) -> 'Mapper':
+        assert inspect.isclass(type_)
+        return cls(
+            type_,
+            id or ID('id'),
+            name.content if name else type_.__name__.lower(),
+        )
+
+    @classmethod
+    def parse_annotated(cls, args: tuple[Any, ...]):
+        type_param = None
+        id_param = None
+        name_param = None
+        for arg in args:
+            if isinstance(arg, ID):
+                id_param = arg
+            elif isinstance(arg, Name):
+                name_param = arg
+            elif inspect.isclass(arg):
+                type_param = arg
+            else:
+                continue
+        return cls.create(type_param, id_param, name_param)
+
+    @classmethod
+    def parse_from_annotation(cls, annotation: Type[Any]):
+        origin = typing.get_origin(annotation)
+        if origin is None:
+            return cls.create(annotation)
+        args = typing.get_args(annotation)
+        if origin is typing.Annotated:
+            return cls.parse_annotated(args)
+        return origin, args
+
+    @property
+    def accessor_type(self) -> Literal['attr', 'item']:
+        if issubclass(self.cls, dict):
+            return 'item'
+        else:
+            return 'attr'
+
+    @property
+    def id_name(self) -> str:
+        return self.name + '_id'
+
+    @property
+    def identity_map_name(self) -> str:
+        return self.name + '_map'
+
+    @property
+    def last_obj_name(self) -> str:
+        return f'last_{self.name}'
+
+
 class Context:
+    mappers: dict[str, Mapper]
+    rels: dict[str, list[Relationship]]
+    result_mappers: list[Mapper]
+    result_is_unary: bool | None
+    columns: tuple[str, ...] | None
+    fields_to_columns: dict[Mapper, dict[str, str]]
 
     def __init__(
         self,
@@ -16,7 +90,8 @@ class Context:
         relationships: Iterable[Relationship],
         columns: tuple[str, ...],
     ):
-        self.registry = defaultdict(list)
+        self.mappers = {}
+        self.rels = defaultdict(list)
         self.result_mappers = []
         self.result_is_unary = None
         self.columns = None
@@ -27,7 +102,7 @@ class Context:
         self.parse_columns(columns)
         self.lineno = self._create_line_counter()
 
-    def column_for_field(self, mapper: ClsMapper, field: str) -> str:
+    def column_for_field(self, mapper: Mapper, field: str) -> str:
         try:
             return self.fields_to_columns[mapper][field]
         except KeyError as e:
@@ -46,57 +121,58 @@ class Context:
 
         return inc_and_return
 
-    def add_cls(self, type_: Type[Any]):
-        id_fields = 'id'
-        cls = type_
-        if typing.get_origin(type_) is typing.Annotated:
-            args = typing.get_args(type_)
-            cls = args[0]
-            for arg in args:
-                if isinstance(arg, ID):
-                    id_fields = arg.fields
-                    break
-
-        assert inspect.isclass(cls)
-        mapper = ClsMapper(cls, id_fields)
-        self.registry[mapper] = []
+    def parse_mapper(self, annotation: typing.Any):
+        mapper = Mapper.parse_from_annotation(annotation)
+        if isinstance(mapper, Mapper):
+            if mapper.name not in self.mappers:
+                self.mappers[mapper.name] = mapper
         return mapper
 
-    def parse_result(self, result: Result) -> None:
-        result_origin = typing.get_origin(result)
-        if result_origin is None:
-            self.result_is_unary = True
-            mapper = self.add_cls(result)
-            self.result_mappers.append(mapper)
-            return
+    def mapper(self, annotation: typing.Any):
+        if isinstance(annotation, str):
+            return self.mappers[annotation]
+        return self.parse_mapper(annotation)
 
-        self.result_is_unary = False
-        for type_ in typing.get_args(result):
-            mapper = self.add_cls(type_)
+    def parse_result(self, annotation: Result) -> None:
+        mapper = self.parse_mapper(annotation)
+        if isinstance(mapper, Mapper):
             self.result_mappers.append(mapper)
+            self.result_is_unary = True
+        elif isinstance(mapper, tuple):
+            origin, args = mapper
+            if issubclass(origin, typing.Tuple):
+                self.result_is_unary = False
+                for arg in args:
+                    self.parse_mapper(arg)
+                    if isinstance(mapper, Mapper):
+                        self.result_mappers.append(mapper)
 
     def parse_relationships(
         self, relationships: Iterable[Relationship],
     ) -> None:
-        for relation in relationships:
-            self.registry[self.add_cls(relation.right)].append(relation)
-            self.registry[self.add_cls(relation.left)] = []
+        for rel in relationships:
+            if isinstance(rel.right, str):
+                self.rels[rel.right].append(rel)
+            else:
+                mapper = self.parse_mapper(rel.right)
+                self.rels[mapper.name].append(rel)
+
+            if not isinstance(rel.left, str):
+                self.parse_mapper(rel.left)
 
     def parse_columns(self, columns: tuple[str, ...]):
         self.columns = columns
         for column in columns:
             try:
-                cls_name, field_name = column.split('__')
+                mapper_name, field_name = column.lower().split('__')
             except ValueError as e:
                 raise ValueError(
                     f'Column {column} are not contains name of cls '
-                    f'and name of field, concated with __'
+                    f'and name of field, concatenated with __'
                 ) from e
-            for mapper in self.mappers:
-                if cls_name == mapper.name:
-                    self.fields_to_columns[mapper][field_name] = column
-                    break
+            mapper = self.mappers[mapper_name]
+            self.fields_to_columns[mapper][field_name] = column
 
     @cached_property
-    def mappers(self) -> list[ClsMapper]:
-        return list(self.registry.keys())
+    def mappers_list(self) -> list[Mapper]:
+        return list(self.mappers.values())

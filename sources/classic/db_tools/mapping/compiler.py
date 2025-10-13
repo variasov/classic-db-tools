@@ -23,7 +23,7 @@ def compile_mapper(
     code = compile(ast_module, '<string>', 'exec')
     namespace = {
         mapper.cls.__name__: mapper.cls
-        for mapper in ctx.mappers
+        for mapper in ctx.mappers.values()
     }
     exec(code, namespace)
     func = namespace['mapper_func']

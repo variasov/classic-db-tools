@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Annotated
 
-from classic.db_tools import Engine, ID
+from classic.db_tools import Engine, ID, Name
 
 
 @dataclass

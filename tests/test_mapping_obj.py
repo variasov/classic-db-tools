@@ -1,6 +1,8 @@
+from typing import Annotated
+
 import pytest
 
-from classic.db_tools import Engine, OneToMany
+from classic.db_tools import Engine, OneToMany, ID, Name
 
 from .dto import Task, Status
 
@@ -89,3 +91,26 @@ def test_returning_with_split__one(engine: Engine, ddl, tasks, static):
         Task(id=1, name='First', statuses=[]),
         Status(id=1, title='CREATED'),
     )
+
+
+def test_custom_name(engine: Engine):
+    assert engine.from_str('''
+    SELECT 
+        data.task_id        AS custom__id,
+        data.task_name      AS custom__name,
+        data.status_id      AS another__id,
+        data.status_title   AS another__title
+    FROM (
+        VALUES
+            (1, 'First', 1, 'CREATED'),
+            (1, 'First', 4, 'STARTED'),
+            (1, 'First', 5, 'FINISHED')
+    ) AS data(task_id, task_name, status_id, status_title)
+    ''').return_as(
+        Annotated[Task, Name('custom')],
+        OneToMany('custom', 'statuses', Annotated[Status, ID('id'), Name('another')]),
+    ).one() == Task(id=1, name='First', statuses=[
+        Status(id=1, title='CREATED'),
+        Status(id=4, title='STARTED'),
+        Status(id=5, title='FINISHED'),
+    ])

@@ -15,7 +15,7 @@ def render_columns(ctx: Context, col_offset: int) -> Iterable[ast.stmt]:
         )
 
 def render_identity_maps(ctx: Context, col_offset: int) -> Iterable[ast.stmt]:
-    for mapper in ctx.mappers:
+    for mapper in ctx.mappers.values():
         yield ast.Assign(
             targets=[
                 ast.Name(id=mapper.identity_map_name, ctx=ast.Store())
@@ -75,23 +75,12 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
     yield render_input(ctx, col_offset)
     yield render_break(ctx, col_offset)
 
-    for mapper in ctx.mappers:
+    for mapper in ctx.mappers.values():
         assign_id_lineno = ctx.lineno()
         # id = row[0]
         yield ast.Assign(
             targets=[ast.Name(id=mapper.id_name, ctx=ast.Store())],
-            value=ast.Subscript(
-                value=ast.Name(id='row', ctx=ast.Load()),
-                slice=ast.Name(
-                    id=ctx.fields_to_columns[mapper][mapper.id_fields],
-                    ctx=ast.Load(),
-                ),
-                ctx=ast.Load(),
-                lineno=ctx.lineno(),
-                col_offset=col_offset,
-            )
-            if mapper.id_is_unary
-            else ast.Tuple(
+            value=ast.Tuple(
                 elts=[
                     ast.Subscript(
                         value=ast.Name(id='row', ctx=ast.Load()),
@@ -103,7 +92,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                         lineno=ctx.lineno(),
                         col_offset=col_offset,
                     )
-                    for field in mapper.id_fields
+                    for field in mapper.id.fields
                 ],
                 ctx=ast.Load(),
                 lineno=ctx.lineno(),
@@ -227,7 +216,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                 )
             )
 
-        for relationship in ctx.registry[mapper]:
+        for relationship in ctx.rels[mapper.name]:
             if mapper.accessor_type == 'attr':
                 if isinstance(relationship, OneToOne):
                     if_body.append(
@@ -235,7 +224,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                             targets=[
                                 ast.Attribute(
                                     value=ast.Name(
-                                        id=relationship.name_of_left,
+                                        id=ctx.mapper(relationship.left).name,
                                         ctx=ast.Load(),
                                     ),
                                     attr=relationship.field,
@@ -243,7 +232,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                                 ),
                             ],
                             value=ast.Name(
-                                id=relationship.name_of_right,
+                                id=ctx.mapper(relationship.right).name,
                                 ctx=ast.Load(),
                             ),
                             lineno=ctx.lineno(),
@@ -257,7 +246,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                                 func=ast.Attribute(
                                     value=ast.Attribute(
                                         value=ast.Name(
-                                            id=relationship.name_of_left,
+                                            id=ctx.mapper(relationship.left).name,
                                             ctx=ast.Load(),
                                         ),
                                         attr=relationship.field,
@@ -267,7 +256,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                                     ctx=ast.Load()
                                 ),
                                 args=[ast.Name(
-                                    id=relationship.name_of_right,
+                                    id=ctx.mapper(relationship.right).name,
                                     ctx=ast.Load(),
                                 )],
                                 keywords=[],
@@ -285,7 +274,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                             left=ast.Constant(value=relationship.field),
                             ops=[ast.NotIn()],
                             comparators=[
-                                ast.Name(id=relationship.name_of_left, ctx=ast.Load())
+                                ast.Name(id=ctx.mapper(relationship.left).name, ctx=ast.Load())
                             ],
                         ),
                         body=[
@@ -293,7 +282,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                                 targets=[
                                     ast.Subscript(
                                         value=ast.Name(
-                                            id=relationship.name_of_left,
+                                            id=ctx.mapper(relationship.left).name,
                                             ctx=ast.Load(),
                                         ),
                                         slice=ast.Constant(
@@ -318,7 +307,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                             targets=[
                                 ast.Subscript(
                                     value=ast.Name(
-                                        id=relationship.name_of_left,
+                                        id=ctx.mapper(relationship.left).name,
                                         ctx=ast.Load(),
                                     ),
                                     slice=ast.Constant(
@@ -328,7 +317,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                                 ),
                             ],
                             value=ast.Name(
-                                id=relationship.name_of_right,
+                                id=ctx.mapper(relationship.right).name,
                                 ctx=ast.Load(),
                             ),
                             lineno=ctx.lineno(),
@@ -342,7 +331,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                                 func=ast.Attribute(
                                     value=ast.Subscript(
                                         value=ast.Name(
-                                            id=relationship.name_of_left,
+                                            id=ctx.mapper(relationship.left).name,
                                             ctx=ast.Load(),
                                         ),
                                         slice=ast.Constant(
@@ -354,7 +343,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                                     ctx=ast.Load()
                                 ),
                                 args=[ast.Name(
-                                    id=relationship.name_of_right,
+                                    id=ctx.mapper(relationship.right).name,
                                     ctx=ast.Load(),
                                 )],
                                 keywords=[],
@@ -391,7 +380,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                         id=mapper.name,
                         ctx=ast.Load(),
                     )
-                    for mapper in ctx.mappers
+                    for mapper in ctx.mappers.values()
                 ],
                 ctx=ast.Load(),
             )
