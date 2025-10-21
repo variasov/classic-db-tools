@@ -22,16 +22,16 @@ engine = Engine('path/to/sql/templates/dir', pool)
 # на выходе, по дефолту, закоммитит
 with engine:
     # Применим схему:
-    engine.from_file('tasks/ddl.sql').execute()
-    
+    engine.query_from('tasks/ddl.sql').execute()
+
     # Сохранение данных
-    engine.from_file('tasks/save.sql').executemany([
+    engine.query_from('tasks/save.sql').executemany([
         {'title': 'Some Task', 'body': 'Do something'},
         {'title': 'Another Task', 'body': 'Do anything'},
     ])
-    
+
     # Получение данных
-    task = engine.from_file('tasks/get_by_id.sql').one(id=1)
+    task = engine.query_from('tasks/get_by_id.sql').one(id=1)
     # (1, 'Some Task', 'Do something')
 ```
 

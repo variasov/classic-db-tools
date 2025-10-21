@@ -45,4 +45,4 @@ def engine(conn_pool):
 
 @pytest.fixture
 def ddl(engine: Engine):
-    return engine.from_file('example/ddl.sql').execute()
+    return engine.query_from('example/ddl.sql').execute()

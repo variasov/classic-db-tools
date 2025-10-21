@@ -1,28 +1,28 @@
+from functools import wraps
+from os import PathLike
 from types import TracebackType
 from typing import (
-    Callable, Any, Iterable, Generator,
-    TypeAlias, Sequence, Generic, Hashable,
+    Any, Iterable, Generator,
+    TypeAlias, Sequence, Generic, Hashable, Type, TypeVar,
 )
 import threading
 from pathlib import Path
 
-from .dynamic.query import DynamicQuery
+from classic.components import add_extra_annotation, doublewrap
+
 from .pool import ConnectionPool
-from .static import StaticQuery
 from .types import Cursor, CursorParams
 from .transaction import Transaction
 from .scoped_connection import ScopedConnection
 
 from . import dynamic, static, mapping
 
-Query: TypeAlias = StaticQuery | DynamicQuery
-
 
 class Engine:
 
     def __init__(
         self,
-        templates_path: str | Path,
+        templates_paths: str | PathLike | Sequence[str | PathLike],
         pool: ConnectionPool,
         commit_on_exit: bool = True,
         str_templates_static_by_default: bool = False,
@@ -30,13 +30,24 @@ class Engine:
     ):
         self.pool = pool
         self.conn = ScopedConnection(pool, commit_on_exit)
-        self.templates_path = templates_path
-        self.dynamic_templates = dynamic.DynamicQueriesFactory(
-            templates_path=templates_path,
-            param_style=self.pool.recognize_param_style(),
+        if isinstance(templates_paths, str):
+            self.templates_paths = [templates_paths]
+        elif isinstance(templates_paths, Path):
+            self.templates_paths = [str(templates_paths)]
+        elif isinstance(templates_paths, Sequence):
+            self.templates_paths = templates_paths
+        else:
+            raise ValueError(
+                'templates_paths not an str, '
+                'PathLike or Sequence[Str | PathLike]'
+            )
+        self.dynamic_templates = dynamic.DynamicQueriesCache(
+            templates_paths=self.templates_paths,
             identifier_quote_char=identifier_quote_char,
         )
-        self.static_templates = static.StaticQueriesFactory(templates_path)
+        self.static_templates = static.StaticQueriesCache(
+            templates_paths=self.templates_paths,
+        )
         self.mapper_cache = {}
         self.mapper_cache_lock = threading.Lock()
         self.str_templates_static_by_default = str_templates_static_by_default
@@ -48,33 +59,27 @@ class Engine:
         with self.mapper_cache_lock:
             self.mapper_cache[key] = value
 
-    def from_file(self, filename: str) -> 'LazyQuery':
+    def query_from(self, filename: str) -> 'Query':
         if filename.endswith('.sql'):
-            factory = self.static_templates
+            create_lazy = self.static_templates.create_lazy
         elif filename.endswith('.sql.tmpl'):
-            factory = self.dynamic_templates
+            create_lazy = self.dynamic_templates.create_lazy
         else:
             raise ValueError(f'Unsupported filename extension: {filename}')
-        return LazyQuery(
-            engine=self,
-            query_factory=lambda: factory.get(filename=filename)
-        )
+        return Query(self, create_lazy(filename=filename))
 
-    def from_str(self, query: str, static: bool = None) -> 'LazyQuery':
+    def query(self, content: str, static: bool = None) -> 'Query':
         if static is None:
             static = self.str_templates_static_by_default
 
         if static is True:
-            factory = self.static_templates
+            create_lazy = self.static_templates.create_lazy
         elif static is False:
-            factory = self.dynamic_templates
+            create_lazy = self.dynamic_templates.create_lazy
         else:
             raise ValueError(f'Unknown "static" arg value: {static}')
 
-        return LazyQuery(
-            engine=self,
-            query_factory=lambda: factory.get(content=query),
-        )
+        return Query(self, create_lazy(content=content))
 
     @property
     def cursor(self):
@@ -84,7 +89,8 @@ class Engine:
             raise AttributeError('''
                 Trying to access cursor, while not in started state.
                 Maybe, you forgot to enter in engine ctx?:
-                >>> with engine: query.execute(...)
+                >>> with engine:
+                ...     query.execute(...)
             ''')
 
     def transaction(self):
@@ -109,33 +115,24 @@ class Engine:
         self.conn.rollback()
 
 
-class LazyQuery:
+class Query:
 
     def __init__(
         self,
         engine: Engine,
-        query_factory: Callable[[], Query],
+        lazy_query,
     ):
         self.engine = engine
-
-        self.query_factory = query_factory
-        self._query = None
-
-    @property
-    def query(self):
-        query = self._query
-        if query is None:
-            query = self._query = self.query_factory()
-        return query
+        self._lazy_query = lazy_query
 
     def return_as(
         self,
         result: mapping.Result,
         *relationships: mapping.Relationship,
-    ) -> 'LazyMapper[mapping.Result]':
-        return LazyMapper[mapping.Result](
+    ) -> 'MappedQuery[mapping.Result]':
+        return MappedQuery[mapping.Result](
             engine=self.engine,
-            query_factory=self.query_factory,
+            lazy_query=self._lazy_query,
             result=result,
             relationships=relationships,
         )
@@ -147,7 +144,7 @@ class LazyQuery:
         cursor: Cursor = None,
         **kwargs: Any,
     ) -> Cursor:
-        return self.query.execute(
+        return self._lazy_query().execute(
             params or kwargs,
             cursor or self.engine.cursor,
         )
@@ -157,7 +154,9 @@ class LazyQuery:
         params: Sequence[CursorParams],
         cursor: Cursor = None,
     ) -> Cursor:
-        return self.query.executemany(params, cursor or self.engine.cursor)
+        return self._lazy_query().executemany(
+            params, cursor or self.engine.cursor,
+        )
 
     def all(
         self,
@@ -166,7 +165,7 @@ class LazyQuery:
         cursor: Cursor = None,
         **kwargs: Any,
     ):
-        cursor = self.query.execute(
+        cursor = self._lazy_query().execute(
             params or kwargs,
             cursor or self.engine.cursor,
         )
@@ -180,7 +179,7 @@ class LazyQuery:
         _cursor: Cursor = None,
         **kwargs: Any,
     ) -> Generator[Any, None, None]:
-        _cursor = self.query.execute(
+        _cursor = self._lazy_query().execute(
             params or kwargs,
             _cursor or self.engine.cursor,
         )
@@ -198,7 +197,7 @@ class LazyQuery:
         _cursor: Cursor = None,
         **kwargs: Any,
     ) -> Any:
-        _cursor = self.query.execute(
+        _cursor = self._lazy_query().execute(
             params or kwargs,
             _cursor or self.engine.cursor,
         )
@@ -229,36 +228,28 @@ class LazyQuery:
         **kwargs: Any,
     ) -> int:
         """Количество строк, обработанных запросом"""
-        cursor = self.query.execute(
+        cursor = self._lazy_query().execute(
             params or kwargs,
             _cursor or self.engine.cursor,
         )
         return cursor.rowcount
 
 
-class LazyMapper(Generic[mapping.Result]):
+class MappedQuery(Generic[mapping.Result]):
 
     def __init__(
         self,
         engine: Engine,
-        query_factory: Callable[[], Query],
+        lazy_query,
         result: TypeAlias,
         relationships: Iterable[mapping.Relationship],
     ) -> None:
         self.engine = engine
-        self.query_factory = query_factory
+        self._lazy_query = lazy_query
         self.result = result
         self.relationships = relationships
-        self._query = None
         self._mapper = None
         self._compile_mapper = mapping.compile_mapper
-
-    @property
-    def query(self) -> Query:
-        query = self._query
-        if query is None:
-            query = self._query = self.query_factory()
-        return query
 
     def mapper(self, cursor: Cursor) -> Generator[Any, Any, None]:
         columns = tuple(column[0] for column in cursor.description)
@@ -288,7 +279,7 @@ class LazyMapper(Generic[mapping.Result]):
         _cursor: Cursor = None,
         **kwargs: Any,
     ) -> Generator[mapping.Result, None, None]:
-        _cursor = self.query.execute(
+        _cursor = self._lazy_query().execute(
             params or kwargs,
             _cursor or self.engine.cursor,
         )
@@ -335,3 +326,16 @@ class LazyMapper(Generic[mapping.Result]):
             iterator.close()
             result = None
         return result
+
+
+T = TypeVar('T')
+
+@doublewrap
+def in_transaction(fn: T, prop: str = 'db', type_: Type[Engine] = Engine) -> T:
+
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        with getattr(self, prop).transaction():
+            return fn(self, *args, **kwargs)
+
+    return add_extra_annotation(wrapper, prop, type_)

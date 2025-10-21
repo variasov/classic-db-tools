@@ -12,7 +12,7 @@ def fake():
 
 def test_queries_cache(engine: Engine):
     fake_compile = Mock(return_value=fake)
-    query = engine.from_str('SELECT 1 WHERE FALSE').return_as(Task)
+    query = engine.query('SELECT 1 WHERE FALSE').return_as(Task)
     query._compile_mapper = fake_compile
 
     fake_compile.assert_not_called()

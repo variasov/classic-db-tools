@@ -21,12 +21,12 @@ sql = '''
 
 @pytest.fixture
 def tasks(engine: Engine, ddl):
-    engine.from_file('example/save_task.sql').executemany([
+    engine.query_from('example/save_task.sql').executemany([
         {'name': 'First', 'value': ''},
         {'name': 'Second', 'value': ''},
         {'name': 'Third', 'value': ''},
     ])
-    engine.from_file('example/save_task_statuses.sql').executemany([
+    engine.query_from('example/save_task_statuses.sql').executemany([
         {'title': 'CREATED', 'task_id': 1},
         {'title': 'CREATED', 'task_id': 2},
         {'title': 'CREATED', 'task_id': 3},
@@ -38,7 +38,7 @@ def tasks(engine: Engine, ddl):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
-    assert engine.from_str(sql, static=static).return_as(
+    assert engine.query(sql, static=static).return_as(
         Task,
         OneToMany(Task, 'statuses', Status),
     ).all() == [
@@ -58,7 +58,7 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
-    assert engine.from_str(sql, static=static).return_as(
+    assert engine.query(sql, static=static).return_as(
         Task,
         OneToMany(Task, 'statuses', Status),
     ).one() == Task(id=1, name='First', statuses=[
@@ -70,7 +70,7 @@ def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_split__all(engine: Engine, ddl, tasks, static):
-    assert engine.from_str(sql, static=static).return_as(
+    assert engine.query(sql, static=static).return_as(
         tuple[Task, Status],
     ).all() == [
         (Task(id=1, name='First', statuses=[]), Status(id=1, title='CREATED')),
@@ -83,7 +83,7 @@ def test_returning_with_split__all(engine: Engine, ddl, tasks, static):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_split__one(engine: Engine, ddl, tasks, static):
-    assert engine.from_str(
+    assert engine.query(
         sql, static=static
     ).return_as(
         tuple[Task, Status],
@@ -94,7 +94,7 @@ def test_returning_with_split__one(engine: Engine, ddl, tasks, static):
 
 
 def test_custom_name(engine: Engine):
-    assert engine.from_str('''
+    assert engine.query('''
     SELECT 
         data.task_id        AS custom__id,
         data.task_name      AS custom__name,

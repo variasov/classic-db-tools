@@ -1,2 +1,1 @@
-from .factory import StaticQueriesFactory
-from .query import StaticQuery
+from .factory import StaticQueriesCache

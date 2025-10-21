@@ -1,39 +1,66 @@
-from jinja2 import Environment, FileSystemLoader
+import threading
+from typing import Iterable, Callable, Sequence
+
+import jinja2
+
+from classic.db_tools.params_styles import recognize_param_style
+from classic.db_tools.types import Cursor, CursorParams
 
 from .renderer import Renderer
 from .extension import AutoBind
-from .query import DynamicQuery
 
 
-class DynamicQueriesFactory:
-    VALID_ID_QUOTE_CHARS = ('`', "'")
-    VALID_PARAM_STYLES = (
-        'qmark',     # qmark 'where name = ?'
-        'numeric',   # numeric 'where name = :1'
-        'named',     # named 'where name = :name'
-        'format',    # format 'where name = %s'
-        'pyformat',  # pyformat 'where name = %(name)s'
-        'asyncpg',   # asyncpg 'where name = $1'
-    )
+class DynamicQuery:
 
     def __init__(
         self,
-        templates_path: str,
-        param_style: str,
+        renderer: Renderer,
+        template: jinja2.Template,
+    ):
+        self.renderer = renderer
+        self.template = template
+
+    def execute(
+        self,
+        params: CursorParams = None,
+        cursor: Cursor = None,
+    ) -> Cursor:
+        sql, ordered_params = self.renderer.prepare_query(
+            self.template, params, recognize_param_style(cursor),
+        )
+        cursor.execute(sql, ordered_params)
+        return cursor
+
+    def executemany(
+        self,
+        params: Iterable[CursorParams],
+        cursor: Cursor,
+    ) -> Cursor:
+        for param in params:
+            sql, ordered_params = self.renderer.prepare_query(
+                self.template, param, recognize_param_style(cursor),
+            )
+            cursor.execute(sql, ordered_params)
+        return cursor
+
+
+class DynamicQueriesCache:
+    VALID_ID_QUOTE_CHARS = ('`', "'")
+
+    def __init__(
+        self,
+        templates_paths: Sequence[str],
         identifier_quote_char: str = "'",
     ):
         assert identifier_quote_char in self.VALID_ID_QUOTE_CHARS
-        assert param_style in self.VALID_PARAM_STYLES
 
         self.identifier_quote_char = identifier_quote_char
-        self.param_style = param_style
-        self.jinja = Environment(
-            loader=FileSystemLoader(templates_path),
+        self.jinja = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(templates_paths),
             auto_reload=False,
             autoescape=True,
         )
         self.renderer = Renderer()
-        self.renderer.param_style = self.param_style
         self.jinja.add_extension(AutoBind)
         self.jinja.filters['bind'] = self.renderer.bind
         self.jinja.filters['sqlsafe'] = self.renderer.sql_safe
@@ -43,14 +70,35 @@ class DynamicQueriesFactory:
                 self.identifier_quote_char,
             )
         )
+        self.cache = {}
+        self.lock = threading.RLock()
 
-    def get(self, filename: str = None, content: str = None) -> DynamicQuery:
-        assert filename is None or content is None
+    def create_lazy(
+        self,
+        filename: str = None,
+        content: str = None,
+    ) -> Callable[[], DynamicQuery]:
         if filename:
-            template = self.jinja.get_template(filename)
-            return DynamicQuery(self.renderer, template)
+            key = filename
         elif content:
-            template = self.jinja.from_string(content)
-            return DynamicQuery(self.renderer, template)
+            key = content
         else:
             raise NotImplemented
+
+        def lazy_query():
+            with self.lock:
+                obj = self.cache.get(key)
+                if obj is None:
+                    if filename:
+                        template = self.jinja.get_template(filename)
+                    elif content:
+                        template = self.jinja.from_string(content)
+                    else:
+                        raise NotImplemented
+
+                    obj = DynamicQuery(self.renderer, template)
+                    self.cache[key] = obj
+
+            return obj
+
+        return lazy_query

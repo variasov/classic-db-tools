@@ -17,7 +17,7 @@ class SomeObj:
 
 
 def test_composite_keys_mapping(engine: Engine):
-    assert engine.from_str('''
+    assert engine.query('''
         SELECT 
             field_1 as SomeObj__field_1,
             field_2 as SomeObj__field_2,

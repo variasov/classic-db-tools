@@ -77,7 +77,9 @@ class Renderer(threading.local):
                 raise ValueError(
                     'identifier filter expects a string or an Iterable'
                 )
-            return Markup('.'.join(quote_and_escape(s) for s in raw_identifier))
+            return Markup('.'.join(
+                quote_and_escape(s) for s in raw_identifier
+            ))
 
         return identifier_filter
 
@@ -85,8 +87,10 @@ class Renderer(threading.local):
         self,
         template: Template,
         data: dict[str, object],
+        param_style: str,
     ):
         self.bind_params = {}
+        self.param_style = param_style
         self.param_index = 0
         try:
             query = template.render(data)
@@ -99,4 +103,5 @@ class Renderer(threading.local):
             return query, bind_params
         finally:
             del self.bind_params
+            del self.param_style
             del self.param_index
