@@ -1,9 +1,9 @@
-from functools import wraps
+from functools import wraps, partial
 from os import PathLike
 from types import TracebackType
 from typing import (
     Any, Iterable, Generator,
-    TypeAlias, Sequence, Generic, Hashable, Type, TypeVar,
+    TypeAlias, Sequence, Generic, Hashable, Type, TypeVar, Callable,
 )
 import threading
 from pathlib import Path
@@ -11,7 +11,7 @@ from pathlib import Path
 from classic.components import add_extra_annotation, doublewrap
 
 from .pool import ConnectionPool
-from .types import Cursor, CursorParams
+from .types import Cursor, CursorParams, Row
 from .transaction import Transaction
 from .scoped_connection import ScopedConnection
 
@@ -251,7 +251,10 @@ class MappedQuery(Generic[mapping.Result]):
         self._mapper = None
         self._compile_mapper = mapping.compile_mapper
 
-    def mapper(self, cursor: Cursor) -> Generator[Any, Any, None]:
+    def mapper(self, cursor: Cursor) -> Callable[
+        [Iterable[Row]],
+        Generator[Any, Any, None]
+    ]:
         columns = tuple(column[0] for column in cursor.description)
         key = (self.result, *self.relationships, *columns)
         mapper = self.engine.get_mapper_from_cache(key)
@@ -297,29 +300,45 @@ class MappedQuery(Generic[mapping.Result]):
             _cursor or self.engine.cursor,
         )
         mapper = self.mapper(_cursor)
-        mapper_instance = mapper()
-        next(mapper_instance)
-        while True:
-            if _batch:
-                rows = _cursor.fetchmany(_batch)
-            else:
-                rows = _cursor.fetchall()
-            if not rows:
-                try:
-                    last_obj = mapper_instance.send(None)
-                except StopIteration:
-                    last_obj = None
-                finally:
-                    mapper_instance.close()
-                    _cursor.close()
-                if last_obj:
-                    yield last_obj
-                break
-            for row in rows:
-                result = mapper_instance.send(row)
-                if result is not None:
-                    yield result
-                    next(mapper_instance)
+
+        if _batch:
+            fetch = partial(_cursor.fetchmany, _batch)
+        else:
+            fetch = _cursor.fetchall
+
+        def rows_iter():
+            while True:
+                rows = fetch()
+                if not rows:
+                    return
+                for row in rows:
+                    yield row
+
+        for obj in mapper(rows_iter()):
+            yield obj
+
+        # next(mapper_instance)
+        # while True:
+        #     if _batch:
+        #         rows = _cursor.fetchmany(_batch)
+        #     else:
+        #         rows = _cursor.fetchall()
+        #     if not rows:
+        #         try:
+        #             last_obj = mapper_instance.send(None)
+        #         except StopIteration:
+        #             last_obj = None
+        #         finally:
+        #             mapper_instance.close()
+        #             _cursor.close()
+        #         if last_obj:
+        #             yield last_obj
+        #         break
+        #     for row in rows:
+        #         result = mapper_instance.send(row)
+        #         if result is not None:
+        #             yield result
+        #             next(mapper_instance)
 
     def one(
         self,

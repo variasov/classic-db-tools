@@ -17,7 +17,7 @@ class SomeObj:
 
 
 def test_composite_keys_mapping(engine: Engine):
-    assert engine.query('''
+    query = engine.query('''
         SELECT 
             field_1 as SomeObj__field_1,
             field_2 as SomeObj__field_2,
@@ -35,7 +35,8 @@ def test_composite_keys_mapping(engine: Engine):
             Annotated[SomeObj, ID('field_1', 'field_2')],
             Annotated[Nested, ID('field_4')],
         ],
-    ).all() == [
+    )
+    assert query.all() == [
         (SomeObj(1, 1, 1), Nested(1)),
         (SomeObj(1, 1, 1), Nested(2)),
         (SomeObj(1, 2, 3), Nested(3)),

@@ -3,14 +3,11 @@ from classic.db_tools import Engine
 from .dto import Task
 
 
-mapper_sources = '''def mapper_func():
+mapper_sources = '''def mapper_func(rows):
     task__id = 0
     task_map = {}
     last_task = None
-    while True:
-        row = (yield)
-        if row is None:
-            break
+    for row in rows:
         task_id = (row[task__id],)
         task = task_map.get(task_id)
         if task is None:

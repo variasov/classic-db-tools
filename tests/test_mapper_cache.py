@@ -5,7 +5,7 @@ from classic.db_tools import Engine
 from .dto import Task
 
 
-def fake():
+def fake(rows):
     while True:
         yield
 

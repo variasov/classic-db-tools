@@ -14,6 +14,7 @@ def render_columns(ctx: Context, col_offset: int) -> Iterable[ast.stmt]:
             col_offset=col_offset,
         )
 
+
 def render_identity_maps(ctx: Context, col_offset: int) -> Iterable[ast.stmt]:
     for mapper in ctx.mappers.values():
         yield ast.Assign(
@@ -24,6 +25,7 @@ def render_identity_maps(ctx: Context, col_offset: int) -> Iterable[ast.stmt]:
             lineno=ctx.lineno(),
             col_offset=col_offset,
         )
+
 
 def render_last_root(ctx: Context, col_offset: int) -> Iterable[ast.stmt]:
     if not ctx.result_is_unary:
@@ -38,42 +40,22 @@ def render_last_root(ctx: Context, col_offset: int) -> Iterable[ast.stmt]:
         col_offset=col_offset,
     )]
 
+
 def render_cycle(ctx: Context, col_offset: int) -> ast.stmt:
-    return ast.While(
-        test=ast.Constant(value=True),
+    return ast.For(
+        target=ast.Name(id='row', ctx=ast.Store()),
+        iter=ast.Name(id='rows', ctx=ast.Load()),
         body=list(render_cycle_body(ctx, col_offset + 1)),
         orelse=[],
         lineno=ctx.lineno(),
         col_offset=col_offset,
     )
 
-def render_input(ctx: Context, col_offset: int) -> ast.stmt:
-    return ast.Assign(
-        targets=[ast.Name(id='row', ctx=ast.Store())],
-        value=ast.Yield(),
-        lineno=ctx.lineno(),
-        col_offset=col_offset,
-    )
 
-def render_break(ctx: Context, col_offset: int) -> ast.stmt:
-    return ast.If(
-        test=ast.Compare(
-            left=ast.Name(id='row', ctx=ast.Load()),
-            ops=[ast.Is()],
-            comparators=[ast.Constant(value=None)],
-            lineno=ctx.lineno(),
-            col_offset=col_offset,
-        ),
-        body=[ast.Break()],
-        orelse=[],
-        lineno=ctx.lineno(),
-        col_offset=col_offset,
-    )
-
-def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None, None]:
-
-    yield render_input(ctx, col_offset)
-    yield render_break(ctx, col_offset)
+def render_cycle_body(
+    ctx: Context,
+    col_offset: int
+) -> Generator[ast.stmt, None, None]:
 
     for mapper in ctx.mappers.values():
         assign_id_lineno = ctx.lineno()
@@ -217,64 +199,18 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
             )
 
         for relationship in ctx.rels[mapper.name]:
-            if mapper.accessor_type == 'attr':
-                if isinstance(relationship, OneToOne):
-                    if_body.append(
-                        ast.Assign(
-                            targets=[
-                                ast.Attribute(
-                                    value=ast.Name(
-                                        id=ctx.mapper(relationship.left).name,
-                                        ctx=ast.Load(),
-                                    ),
-                                    attr=relationship.field,
-                                    ctx=ast.Store(),
-                                ),
-                            ],
-                            value=ast.Name(
-                                id=ctx.mapper(relationship.right).name,
-                                ctx=ast.Load(),
-                            ),
-                            lineno=ctx.lineno(),
-                            col_offset=col_offset,
-                        )
-                    )
-                elif isinstance(relationship, OneToMany):
-                    if_body.append(
-                        ast.Expr(
-                            value=ast.Call(
-                                func=ast.Attribute(
-                                    value=ast.Attribute(
-                                        value=ast.Name(
-                                            id=ctx.mapper(relationship.left).name,
-                                            ctx=ast.Load(),
-                                        ),
-                                        attr=relationship.field,
-                                        ctx=ast.Load()
-                                    ),
-                                    attr='append',
-                                    ctx=ast.Load()
-                                ),
-                                args=[ast.Name(
-                                    id=ctx.mapper(relationship.right).name,
-                                    ctx=ast.Load(),
-                                )],
-                                keywords=[],
-                            ),
-                            lineno=ctx.lineno(),
-                            col_offset=col_offset,
-                        )
-                    )
-                else:
-                    raise NotImplemented
-            elif mapper.accessor_type == 'item':
+            # Добавление дефолтов в словарь
+            if mapper.accessor_type == 'item':
                 if_body.append(
                     ast.If(
                         test=ast.Compare(
                             left=ast.Constant(value=relationship.field),
                             ops=[ast.NotIn()],
                             comparators=[
-                                ast.Name(id=ctx.mapper(relationship.left).name, ctx=ast.Load())
+                                ast.Name(
+                                    id=ctx.mapper(relationship.left).name,
+                                    ctx=ast.Load(),
+                                )
                             ],
                         ),
                         body=[
@@ -291,7 +227,11 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                                         ctx=ast.Store()
                                     ),
                                 ],
-                                value=ast.List(elts=[], ctx=ast.Load()),
+                                value=(
+                                    ast.List(elts=[], ctx=ast.Load())
+                                    if isinstance(relationship, OneToMany)
+                                    else ast.Constant(value=None)
+                                ),
                                 lineno=if_body_lineno,
                                 col_offset=col_offset,
                             )
@@ -301,59 +241,6 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
                         col_offset=col_offset,
                     )
                 )
-                if isinstance(relationship, OneToOne):
-                    if_body.append(
-                        ast.Assign(
-                            targets=[
-                                ast.Subscript(
-                                    value=ast.Name(
-                                        id=ctx.mapper(relationship.left).name,
-                                        ctx=ast.Load(),
-                                    ),
-                                    slice=ast.Constant(
-                                        value=relationship.field,
-                                    ),
-                                    ctx=ast.Store(),
-                                ),
-                            ],
-                            value=ast.Name(
-                                id=ctx.mapper(relationship.right).name,
-                                ctx=ast.Load(),
-                            ),
-                            lineno=ctx.lineno(),
-                            col_offset=col_offset,
-                        )
-                    )
-                elif isinstance(relationship, OneToMany):
-                    if_body.append(
-                        ast.Expr(
-                            value=ast.Call(
-                                func=ast.Attribute(
-                                    value=ast.Subscript(
-                                        value=ast.Name(
-                                            id=ctx.mapper(relationship.left).name,
-                                            ctx=ast.Load(),
-                                        ),
-                                        slice=ast.Constant(
-                                            value=relationship.field,
-                                        ),
-                                        ctx=ast.Load(),
-                                    ),
-                                    attr='append',
-                                    ctx=ast.Load()
-                                ),
-                                args=[ast.Name(
-                                    id=ctx.mapper(relationship.right).name,
-                                    ctx=ast.Load(),
-                                )],
-                                keywords=[],
-                            ),
-                            lineno=ctx.lineno(),
-                            col_offset=col_offset,
-                        )
-                    )
-                else:
-                    raise NotImplemented
 
         yield ast.If(
             test=ast.Compare(
@@ -366,6 +253,104 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
             lineno=if_lineno,
             col_offset=col_offset,
         )
+
+        for relationship in ctx.rels[mapper.name]:
+            if mapper.accessor_type == 'attr':
+                if isinstance(relationship, OneToOne):
+                    yield ast.Assign(
+                        targets=[
+                            ast.Attribute(
+                                value=ast.Name(
+                                    id=ctx.mapper(relationship.left).name,
+                                    ctx=ast.Load(),
+                                ),
+                                attr=relationship.field,
+                                ctx=ast.Store(),
+                            ),
+                        ],
+                        value=ast.Name(
+                            id=ctx.mapper(relationship.right).name,
+                            ctx=ast.Load(),
+                        ),
+                        lineno=ctx.lineno(),
+                        col_offset=col_offset,
+                    )
+                elif isinstance(relationship, OneToMany):
+                    yield ast.Expr(
+                        value=ast.Call(
+                            func=ast.Attribute(
+                                value=ast.Attribute(
+                                    value=ast.Name(
+                                        id=ctx.mapper(relationship.left).name,
+                                        ctx=ast.Load(),
+                                    ),
+                                    attr=relationship.field,
+                                    ctx=ast.Load()
+                                ),
+                                attr='append',
+                                ctx=ast.Load()
+                            ),
+                            args=[ast.Name(
+                                id=ctx.mapper(relationship.right).name,
+                                ctx=ast.Load(),
+                            )],
+                            keywords=[],
+                        ),
+                        lineno=ctx.lineno(),
+                        col_offset=col_offset,
+                    )
+                else:
+                    raise NotImplemented
+            elif mapper.accessor_type == 'item':
+                if isinstance(relationship, OneToOne):
+                    yield ast.Assign(
+                        targets=[
+                            ast.Subscript(
+                                value=ast.Name(
+                                    id=ctx.mapper(relationship.left).name,
+                                    ctx=ast.Load(),
+                                ),
+                                slice=ast.Constant(
+                                    value=relationship.field,
+                                ),
+                                ctx=ast.Store(),
+                            ),
+                        ],
+                        value=ast.Name(
+                            id=ctx.mapper(relationship.right).name,
+                            ctx=ast.Load(),
+                        ),
+                        lineno=ctx.lineno(),
+                        col_offset=col_offset,
+                    )
+                elif isinstance(relationship, OneToMany):
+                    yield ast.Expr(
+                        value=ast.Call(
+                            func=ast.Attribute(
+                                value=ast.Subscript(
+                                    value=ast.Name(
+                                        id=ctx.mapper(relationship.left).name,
+                                        ctx=ast.Load(),
+                                    ),
+                                    slice=ast.Constant(
+                                        value=relationship.field,
+                                    ),
+                                    ctx=ast.Load(),
+                                ),
+                                attr='append',
+                                ctx=ast.Load()
+                            ),
+                            args=[ast.Name(
+                                id=ctx.mapper(relationship.right).name,
+                                ctx=ast.Load(),
+                            )],
+                            keywords=[],
+                        ),
+                        lineno=ctx.lineno(),
+                        col_offset=col_offset,
+                    )
+                else:
+                    raise NotImplemented
 
     if not ctx.result_is_unary:
         if len(ctx.mappers) == 1:
@@ -392,6 +377,7 @@ def render_cycle_body(ctx: Context, col_offset: int) -> Generator[ast.stmt, None
             col_offset=col_offset,
         )
 
+
 def render_post_cycle(ctx, col_offset: int) -> Iterable[ast.stmt]:
     if ctx.result_is_unary:
         yield ast.Expr(
@@ -405,12 +391,15 @@ def render_post_cycle(ctx, col_offset: int) -> Iterable[ast.stmt]:
             col_offset=col_offset,
         )
 
+
 def render_mapper_func(ctx: Context, col_offset: int) -> ast.stmt:
     return ast.FunctionDef(
         name='mapper_func',
         args=ast.arguments(
             posonlyargs=[],
-            args=[],
+            args=[
+                ast.arg(arg='rows'),
+            ],
             kwonlyargs=[],
             kw_defaults=[],
             defaults=[],

@@ -1,8 +1,9 @@
+from dataclasses import dataclass
 from typing import Annotated
 
 import pytest
 
-from classic.db_tools import Engine, OneToMany, ID, Name
+from classic.db_tools import Engine, OneToMany, ID, Name, OneToOne
 
 from .dto import Task, Status
 
@@ -108,9 +109,43 @@ def test_custom_name(engine: Engine):
     ) AS data(task_id, task_name, status_id, status_title)
     ''').return_as(
         Annotated[Task, Name('custom')],
-        OneToMany('custom', 'statuses', Annotated[Status, ID('id'), Name('another')]),
+        OneToMany('custom', 'statuses', Annotated[
+            Status, ID('id'), Name('another')
+        ]),
     ).one() == Task(id=1, name='First', statuses=[
         Status(id=1, title='CREATED'),
         Status(id=4, title='STARTED'),
         Status(id=5, title='FINISHED'),
     ])
+
+
+@dataclass
+class SomeObj:
+    id: int
+    value: str
+
+
+@dataclass
+class AnotherObj:
+    id: int
+    some_obj: SomeObj = None
+
+
+def test_one_to_one(engine: Engine):
+    assert engine.query('''
+    SELECT 
+        data.AnotherObj__id as AnotherObj__id,
+        data.SomeObj__id as SomeObj__id,
+        data.SomeObj__value as SomeObj__value
+    FROM (
+        VALUES
+            (1, 1, 'VALUE'),
+            (2, 1, 'VALUE')
+    ) AS data(AnotherObj__id, SomeObj__id, SomeObj__value)
+    ''').return_as(
+        AnotherObj,
+        OneToOne(AnotherObj, 'some_obj', SomeObj),
+    ).all() == [
+        AnotherObj(id=1, some_obj=SomeObj(1, 'VALUE')),
+        AnotherObj(id=2, some_obj=SomeObj(1, 'VALUE')),
+    ]
