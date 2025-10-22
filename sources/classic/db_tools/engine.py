@@ -260,7 +260,20 @@ class MappedQuery(Generic[mapping.Result]):
                 self.result, self.relationships, columns,
             )
             self.engine.cache_mapper(key, mapper)
-        return mapper()
+        return mapper
+
+    def sources(
+        self,
+        params: CursorParams = None,
+        /,
+        _cursor: Cursor = None,
+        **kwargs: Any,
+    ):
+        cursor = self._lazy_query().execute(
+            params or kwargs,
+            _cursor or self.engine.cursor,
+        )
+        return self.mapper(cursor).sources()
 
     def all(
         self,
@@ -284,7 +297,8 @@ class MappedQuery(Generic[mapping.Result]):
             _cursor or self.engine.cursor,
         )
         mapper = self.mapper(_cursor)
-        next(mapper)
+        mapper_instance = mapper()
+        next(mapper_instance)
         while True:
             if _batch:
                 rows = _cursor.fetchmany(_batch)
@@ -292,20 +306,20 @@ class MappedQuery(Generic[mapping.Result]):
                 rows = _cursor.fetchall()
             if not rows:
                 try:
-                    last_obj = mapper.send(None)
+                    last_obj = mapper_instance.send(None)
                 except StopIteration:
                     last_obj = None
                 finally:
-                    mapper.close()
+                    mapper_instance.close()
                     _cursor.close()
                 if last_obj:
                     yield last_obj
                 break
             for row in rows:
-                result = mapper.send(row)
+                result = mapper_instance.send(row)
                 if result is not None:
                     yield result
-                    next(mapper)
+                    next(mapper_instance)
 
     def one(
         self,
