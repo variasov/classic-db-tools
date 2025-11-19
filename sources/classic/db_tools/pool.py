@@ -59,9 +59,9 @@ class ConnectionPool:
     def __init__(
         self,
         connection_factory,
-        timeout:float = 5,
-        limit=0,
-        validator="auto",
+        timeout: float = 5,
+        limit: int = 0,
+        validator: poolvalidators.ConnectionValidator = 'auto',
     ):
         self._pool = self.queue_class()
         self.lock = self.lock_class()

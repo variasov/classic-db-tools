@@ -317,29 +317,6 @@ class MappedQuery(Generic[mapping.Result]):
         for obj in mapper(rows_iter()):
             yield obj
 
-        # next(mapper_instance)
-        # while True:
-        #     if _batch:
-        #         rows = _cursor.fetchmany(_batch)
-        #     else:
-        #         rows = _cursor.fetchall()
-        #     if not rows:
-        #         try:
-        #             last_obj = mapper_instance.send(None)
-        #         except StopIteration:
-        #             last_obj = None
-        #         finally:
-        #             mapper_instance.close()
-        #             _cursor.close()
-        #         if last_obj:
-        #             yield last_obj
-        #         break
-        #     for row in rows:
-        #         result = mapper_instance.send(row)
-        #         if result is not None:
-        #             yield result
-        #             next(mapper_instance)
-
     def one(
         self,
         params: CursorParams = None,
