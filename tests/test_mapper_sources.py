@@ -15,7 +15,8 @@ mapper_sources = '''def mapper_func(rows):
             if last_task is not None:
                 yield last_task
             last_task = task
-    yield last_task'''
+    if last_task is not None:
+        yield last_task'''
 
 
 def test__mapper__sources(engine: Engine):

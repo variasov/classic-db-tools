@@ -380,17 +380,31 @@ def render_cycle_body(
 
 def render_post_cycle(ctx, col_offset: int) -> Iterable[ast.stmt]:
     if ctx.result_is_unary:
-        yield ast.Expr(
-            value=ast.Yield(
-                value=ast.Name(
+        yield ast.If(
+            test=ast.Compare(
+                left=ast.Name(
                     id=ctx.result_mappers[0].last_obj_name,
                     ctx=ast.Load(),
                 ),
+                ops=[ast.IsNot()],
+                comparators=[ast.Constant(value=None)],
             ),
+            body=[
+                ast.Expr(
+                    ast.Yield(
+                        value=ast.Name(
+                            id=ctx.result_mappers[0].last_obj_name,
+                            ctx=ast.Load(),
+                        ),
+                    ),
+                    lineno=ctx.lineno(),
+                    col_offset=col_offset + 1,
+                ),
+            ],
+            orelse=[],
             lineno=ctx.lineno(),
             col_offset=col_offset,
         )
-
 
 def render_mapper_func(ctx: Context, col_offset: int) -> ast.stmt:
     return ast.FunctionDef(

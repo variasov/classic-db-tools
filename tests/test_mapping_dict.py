@@ -45,7 +45,6 @@ def tasks(engine: Engine, ddl):
     ])
     yield
 
-
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
     assert engine.query(sql, static=static).return_as(
@@ -64,6 +63,22 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
             Status(id=3, title='CREATED'),
         ]),
     ]
+
+
+@pytest.mark.parametrize('static', (True, False))
+def test_returning_with_rels__all__empty(engine: Engine, ddl, tasks, static):
+    assert engine.query('''
+        SELECT
+            1 AS Task__id,
+            1 AS Task__name,
+            1 AS Status__id,
+            1 AS Status__title
+        FROM tasks
+        WHERE FALSE
+    ''', static=static).return_as(
+        Task,
+        OneToMany(Task, 'statuses', Status),
+    ).all() == []
 
 
 @pytest.mark.parametrize('static', (True, False))
