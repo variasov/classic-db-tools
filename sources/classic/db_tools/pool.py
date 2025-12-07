@@ -52,14 +52,14 @@ class ConnectionPool:
     lock_class = threading.Lock
 
     #: How long to wait for a connection to become available
-    timeout = 5
+    timeout: float = 5.0
 
     _pool: queue.Queue
 
     def __init__(
         self,
         connection_factory,
-        timeout: float = 5,
+        timeout: float = 5.0,
         limit: int = 0,
         validator: poolvalidators.ConnectionValidator = 'auto',
     ):
@@ -135,7 +135,9 @@ class ConnectionPool:
     def _connect(self):
         conn = self.connection_factory()  # type: ignore
         self.connections_created += 1
-        self.reached_limit = bool(self.limit and self.connections_created >= self.limit)
+        self.reached_limit = (
+            self.limit and self.connections_created >= self.limit
+        )
         return conn
 
     def release(self, conn: ConnType):
