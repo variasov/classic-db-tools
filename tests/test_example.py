@@ -45,6 +45,14 @@ def test_scalar(engine: Engine, tasks):
     ).scalar(id='1') == 1
 
 
+def test_scalars(engine: Engine, tasks):
+    assert list(
+        engine.query_from(
+            'example/get_all.sql'
+        ).scalars()
+    ) == [1, 2, 3]
+
+
 def test_insert(engine: Engine, ddl):
     assert engine.query_from('example/count.sql').scalar() == 0
 
