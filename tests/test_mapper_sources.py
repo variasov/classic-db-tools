@@ -8,13 +8,10 @@ mapper_sources = '''def mapper_func(rows):
     task_map = {}
     last_task = None
     for row in rows:
-        task_id = (row[task__id],)
-        task = task_map.get(task_id)
-        if task is None:
-            task = task_map[task_id] = Task(id=row[task__id])
-            if last_task is not None:
-                yield last_task
-            last_task = task
+        task = Task(id=row[task__id])
+        if last_task is not None:
+            yield last_task
+        last_task = task
     if last_task is not None:
         yield last_task'''
 

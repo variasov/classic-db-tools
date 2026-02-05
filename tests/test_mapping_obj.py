@@ -40,7 +40,7 @@ def tasks(engine: Engine, ddl):
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
     assert engine.query(sql, static=static).return_as(
-        Task,
+        Annotated[Task, ID('id')],
         OneToMany(Task, 'statuses', Status),
     ).all() == [
         Task(id=1, name='First', statuses=[
@@ -60,7 +60,7 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
     assert engine.query(sql, static=static).return_as(
-        Task,
+        Annotated[Task, ID('id')],
         OneToMany(Task, 'statuses', Status),
     ).one() == Task(id=1, name='First', statuses=[
         Status(id=1, title='CREATED'),
@@ -108,7 +108,7 @@ def test_custom_name(engine: Engine):
             (1, 'First', 5, 'FINISHED')
     ) AS data(task_id, task_name, status_id, status_title)
     ''').return_as(
-        Annotated[Task, Name('custom')],
+        Annotated[Task, ID('id'), Name('custom')],
         OneToMany('custom', 'statuses', Annotated[
             Status, ID('id'), Name('another')
         ]),

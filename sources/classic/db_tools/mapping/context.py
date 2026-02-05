@@ -13,7 +13,7 @@ from .types import Result
 @dataclass(slots=True, frozen=True)
 class Mapper:
     cls: Type[Any]
-    id: ID
+    id: ID | None
     name: str
 
     @classmethod
@@ -26,7 +26,7 @@ class Mapper:
         assert inspect.isclass(type_)
         return cls(
             type_,
-            id or ID('id'),
+            id,
             name.content if name else type_.__name__.lower(),
         )
 

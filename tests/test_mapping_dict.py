@@ -1,8 +1,8 @@
-from typing import TypedDict
+from typing import TypedDict, Annotated
 
 import pytest
 
-from classic.db_tools import Engine, OneToOne, OneToMany
+from classic.db_tools import Engine, OneToOne, OneToMany, ID
 
 
 class Status(TypedDict):
@@ -48,7 +48,7 @@ def tasks(engine: Engine, ddl):
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
     assert engine.query(sql, static=static).return_as(
-        Task,
+        Annotated[Task, ID('id')],
         OneToMany(Task, 'statuses', Status),
     ).all() == [
         Task(id=1, name='First', statuses=[
@@ -84,7 +84,7 @@ def test_returning_with_rels__all__empty(engine: Engine, ddl, tasks, static):
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
     assert engine.query(sql, static=static).return_as(
-        Task,
+        Annotated[Task, ID('id')],
         OneToMany(Task, 'statuses', Status),
     ).one() == Task(id=1, name='First', statuses=[
         Status(id=1, title='CREATED'),
