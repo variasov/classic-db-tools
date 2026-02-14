@@ -18,6 +18,11 @@ class Name:
         self.content = content.lower()
 
 
+@dataclass(slots=True, frozen=True)
+class ReduceNone:
+    value: bool
+
+
 @dataclass(frozen=True, slots=True)
 class Relationship:
     left: Type[Any] | str

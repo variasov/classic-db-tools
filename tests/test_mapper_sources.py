@@ -1,22 +1,36 @@
-from classic.db_tools import Engine
+from typing import Annotated
+
+from classic.db_tools import Engine, ID
 
 from .dto import Task
 
 
 mapper_sources = '''def mapper_func(rows):
-    task__id = 0
     task_map = {}
-    last_task = None
+
+    def map_task(rows):
+        if row[0] is None:
+            return None
+        task_id = row[0]
+        task = task_map.get(task_id)
+        if task is None:
+            task = task_map[task_id] = Task(id=row[0])
+        return task
+    last_root = None
     for row in rows:
-        task = Task(id=row[task__id])
-        if last_task is not None:
-            yield last_task
-        last_task = task
-    if last_task is not None:
-        yield last_task'''
+        root = map_task(row)
+        if last_root is not root:
+            if last_root is not None:
+                yield last_root
+            last_root = root
+    if last_root is not None:
+        yield last_root'''
 
 
 def test__mapper__sources(engine: Engine):
-    assert engine.query(
+    query = engine.query(
         'SELECT 1 AS task__id'
-    ).return_as(Task).sources() == mapper_sources
+    ).return_as(
+        Annotated[Task, ID('id')],
+    )
+    assert query.sources() == mapper_sources

@@ -2,7 +2,7 @@ from typing import TypedDict, Annotated
 
 import pytest
 
-from classic.db_tools import Engine, OneToOne, OneToMany, ID
+from classic.db_tools import Engine, OneToMany, ID, ReduceNone
 
 
 class Status(TypedDict):
@@ -24,7 +24,7 @@ sql = '''
         task_status.id      AS Status__id,
         task_status.title   AS Status__title
     FROM tasks
-    JOIN task_status ON task_status.task_id = tasks.id
+    LEFT JOIN task_status ON task_status.task_id = tasks.id
     ORDER BY tasks.id, task_status.id 
 '''
 
@@ -35,6 +35,7 @@ def tasks(engine: Engine, ddl):
         {'name': 'First', 'value': ''},
         {'name': 'Second', 'value': ''},
         {'name': 'Third', 'value': ''},
+        {'name': 'Four', 'value': ''},
     ])
     engine.query_from('example/save_task_statuses.sql').executemany([
         {'title': 'CREATED', 'task_id': 1},
@@ -45,12 +46,14 @@ def tasks(engine: Engine, ddl):
     ])
     yield
 
+
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
-    assert engine.query(sql, static=static).return_as(
+    query = engine.query(sql, static=static).return_as(
         Annotated[Task, ID('id')],
-        OneToMany(Task, 'statuses', Status),
-    ).all() == [
+        OneToMany(Task, 'statuses', Annotated[Status, ID('id')]),
+    )
+    assert query.all() == [
         Task(id=1, name='First', statuses=[
             Status(id=1, title='CREATED'),
             Status(id=4, title='STARTED'),
@@ -62,6 +65,7 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
         Task(id=3, name='Third', statuses=[
             Status(id=3, title='CREATED'),
         ]),
+        Task(id=4, name='Four', statuses=[]),
     ]
 
 
@@ -103,6 +107,21 @@ def test_returning_with_split__all(engine: Engine, ddl, tasks, static):
         (Task(id=1, name='First'), Status(id=5, title='FINISHED')),
         (Task(id=2, name='Second'), Status(id=2, title='CREATED')),
         (Task(id=3, name='Third'), Status(id=3, title='CREATED')),
+        (Task(id=4, name='Four'), Status(id=None, title=None)),
+    ]
+
+
+@pytest.mark.parametrize('static', (True, False))
+def test_returning_with_split__all(engine: Engine, ddl, tasks, static):
+    assert engine.query(sql, static=static).return_as(
+        tuple[Task, Annotated[Status, ReduceNone(True)]],
+    ).all() == [
+        (Task(id=1, name='First'), Status(id=1, title='CREATED')),
+        (Task(id=1, name='First'), Status(id=4, title='STARTED')),
+        (Task(id=1, name='First'), Status(id=5, title='FINISHED')),
+        (Task(id=2, name='Second'), Status(id=2, title='CREATED')),
+        (Task(id=3, name='Third'), Status(id=3, title='CREATED')),
+        (Task(id=4, name='Four'), None),
     ]
 
 

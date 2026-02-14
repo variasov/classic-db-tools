@@ -1,5 +1,3 @@
-from IPython.utils.coloransi import valuefrom IPython.utils.coloransi import value
-
 # Classic DB Tools
 
 Идея библиотеки заключается в попытке работать с SQL-запросами как с шаблонами Jinja.

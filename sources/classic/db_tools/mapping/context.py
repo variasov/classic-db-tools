@@ -4,10 +4,10 @@ from typing import Iterable
 import inspect
 import typing
 from dataclasses import dataclass
-from typing import Type, Any, Literal
+from typing import Type, Any
 
-from .params import Relationship, ID, Name
-from .types import Result
+from .params import Relationship, ID, Name, ReduceNone
+from .types import Result, Accessor
 
 
 @dataclass(slots=True, frozen=True)
@@ -15,6 +15,7 @@ class Mapper:
     cls: Type[Any]
     id: ID | None
     name: str
+    reduce_null: bool
 
     @classmethod
     def create(
@@ -22,12 +23,14 @@ class Mapper:
         type_: Type[Any],
         id: ID = None,
         name: Name = None,
+        reduce_null: bool = None,
     ) -> 'Mapper':
         assert inspect.isclass(type_)
         return cls(
             type_,
             id,
             name.content if name else type_.__name__.lower(),
+            reduce_null if reduce_null is not None else id is not None,
         )
 
     @classmethod
@@ -35,16 +38,19 @@ class Mapper:
         type_param = None
         id_param = None
         name_param = None
+        reduce_none_param = None
         for arg in args:
             if isinstance(arg, ID):
                 id_param = arg
             elif isinstance(arg, Name):
                 name_param = arg
+            elif isinstance(arg, ReduceNone):
+                reduce_none_param = arg
             elif inspect.isclass(arg):
                 type_param = arg
             else:
                 continue
-        return cls.create(type_param, id_param, name_param)
+        return cls.create(type_param, id_param, name_param, reduce_none_param)
 
     @classmethod
     def parse_from_annotation(cls, annotation: Type[Any]):
@@ -57,23 +63,20 @@ class Mapper:
         return origin, args
 
     @property
-    def accessor_type(self) -> Literal['attr', 'item']:
-        if issubclass(self.cls, dict):
-            return 'item'
-        else:
-            return 'attr'
+    def accessor(self) -> Accessor:
+        return 'item' if issubclass(self.cls, dict) else 'attr'
 
     @property
     def id_name(self) -> str:
         return self.name + '_id'
 
     @property
-    def identity_map_name(self) -> str:
+    def id_map_name(self) -> str:
         return self.name + '_map'
 
     @property
-    def last_obj_name(self) -> str:
-        return f'last_{self.name}'
+    def func_name(self) -> str:
+        return f'map_{self.name}'
 
 
 class Context:
@@ -82,7 +85,7 @@ class Context:
     result_mappers: list[Mapper]
     result_is_unary: bool | None
     columns: tuple[str, ...] | None
-    fields_to_columns: dict[Mapper, dict[str, str]]
+    fields_to_columns: dict[Mapper, dict[str, tuple[int, str]]]
 
     def __init__(
         self,
@@ -104,7 +107,7 @@ class Context:
 
     def column_for_field(self, mapper: Mapper, field: str) -> str:
         try:
-            return self.fields_to_columns[mapper][field]
+            return self.fields_to_columns[mapper][field][1]
         except KeyError as e:
             raise ValueError(
                 f'For class {mapper.name} not found field {field}',
@@ -151,18 +154,18 @@ class Context:
         self, relationships: Iterable[Relationship],
     ) -> None:
         for rel in relationships:
-            if isinstance(rel.right, str):
-                self.rels[rel.right].append(rel)
+            if isinstance(rel.left, str):
+                self.rels[rel.left].append(rel)
             else:
-                mapper = self.parse_mapper(rel.right)
+                mapper = self.parse_mapper(rel.left)
                 self.rels[mapper.name].append(rel)
 
-            if not isinstance(rel.left, str):
-                self.parse_mapper(rel.left)
+            if not isinstance(rel.right, str):
+                self.parse_mapper(rel.right)
 
     def parse_columns(self, columns: tuple[str, ...]):
         self.columns = columns
-        for column in columns:
+        for index, column in enumerate(columns):
             try:
                 mapper_name, field_name = column.lower().split('__')
             except ValueError as e:
@@ -171,7 +174,7 @@ class Context:
                     f'and name of field, concatenated with __'
                 ) from e
             mapper = self.mappers[mapper_name]
-            self.fields_to_columns[mapper][field_name] = column
+            self.fields_to_columns[mapper][field_name] = index, column
 
     @cached_property
     def mappers_list(self) -> list[Mapper]:
