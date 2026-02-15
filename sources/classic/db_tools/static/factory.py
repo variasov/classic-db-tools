@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Sequence, Callable
 
 import os
@@ -73,7 +72,8 @@ class StaticQueriesCache:
                                 break
                         if obj is None:
                             raise FileNotFoundError(
-                                f'File {filename} does not exist in {self.templates_paths} dirs'
+                                f'File {filename} does not exist in '
+                                f'{self.templates_paths} dirs'
                             )
                     elif content:
                         obj = StaticQuery(content=content)

@@ -220,6 +220,22 @@ class Query:
             return None
         return value[0]
 
+    def scalars(
+        self,
+        params: CursorParams = None,
+        /,
+        _raising: bool = False,
+        _cursor: Cursor = None,
+        **kwargs: Any,
+    ) -> Generator[Any, None, None]:
+        return (
+            row[0] for row in self.iter(
+                params or kwargs,
+                _raising=_raising,
+                _cursor=_cursor or self.engine.cursor,
+            )
+        )
+
     def rowcount(
         self,
         params: CursorParams = None,

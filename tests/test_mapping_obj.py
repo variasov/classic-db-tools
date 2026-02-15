@@ -15,7 +15,7 @@ sql = '''
         task_status.id      AS Status__id,
         task_status.title   AS Status__title
     FROM tasks
-    JOIN task_status ON task_status.task_id = tasks.id
+    LEFT JOIN task_status ON task_status.task_id = tasks.id
     ORDER BY tasks.id, task_status.id 
 '''
 
@@ -26,6 +26,7 @@ def tasks(engine: Engine, ddl):
         {'name': 'First', 'value': ''},
         {'name': 'Second', 'value': ''},
         {'name': 'Third', 'value': ''},
+        {'name': 'Four', 'value': ''},
     ])
     engine.query_from('example/save_task_statuses.sql').executemany([
         {'title': 'CREATED', 'task_id': 1},
@@ -40,8 +41,8 @@ def tasks(engine: Engine, ddl):
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
     assert engine.query(sql, static=static).return_as(
-        Task,
-        OneToMany(Task, 'statuses', Status),
+        Annotated[Task, ID('id')],
+        OneToMany(Task, 'statuses', Annotated[Status, ID('id')]),
     ).all() == [
         Task(id=1, name='First', statuses=[
             Status(id=1, title='CREATED'),
@@ -54,13 +55,14 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
         Task(id=3, name='Third', statuses=[
             Status(id=3, title='CREATED'),
         ]),
+        Task(id=4, name='Four', statuses=[]),
     ]
 
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
     assert engine.query(sql, static=static).return_as(
-        Task,
+        Annotated[Task, ID('id')],
         OneToMany(Task, 'statuses', Status),
     ).one() == Task(id=1, name='First', statuses=[
         Status(id=1, title='CREATED'),
@@ -71,14 +73,16 @@ def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_split__all(engine: Engine, ddl, tasks, static):
-    assert engine.query(sql, static=static).return_as(
+    query = engine.query(sql, static=static).return_as(
         tuple[Task, Status],
-    ).all() == [
+    )
+    assert query.all() == [
         (Task(id=1, name='First', statuses=[]), Status(id=1, title='CREATED')),
         (Task(id=1, name='First', statuses=[]), Status(id=4, title='STARTED')),
         (Task(id=1, name='First', statuses=[]), Status(id=5, title='FINISHED')),
         (Task(id=2, name='Second', statuses=[]), Status(id=2, title='CREATED')),
         (Task(id=3, name='Third', statuses=[]), Status(id=3, title='CREATED')),
+        (Task(id=4, name='Four', statuses=[]), Status(id=None, title=None)),
     ]
 
 
@@ -108,7 +112,7 @@ def test_custom_name(engine: Engine):
             (1, 'First', 5, 'FINISHED')
     ) AS data(task_id, task_name, status_id, status_title)
     ''').return_as(
-        Annotated[Task, Name('custom')],
+        Annotated[Task, ID('id'), Name('custom')],
         OneToMany('custom', 'statuses', Annotated[
             Status, ID('id'), Name('another')
         ]),
