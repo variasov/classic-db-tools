@@ -2,14 +2,14 @@ from functools import wraps, partial
 from os import PathLike
 from types import TracebackType
 from typing import (
-    Any, Iterable, Generator,
-    TypeAlias, Sequence, Generic, Hashable, Type, TypeVar, Callable,
+    Any, Iterable, Generator, Union, List,
+    Sequence, Generic, Hashable,
+    Type, TypeVar, Callable, Optional,
 )
 import threading
 from pathlib import Path
 
-from classic.components import add_extra_annotation, doublewrap
-
+from .doublewrap import doublewrap
 from .pool import ConnectionPool
 from .types import Cursor, CursorParams, Row
 from .transaction import Transaction
@@ -22,7 +22,7 @@ class Engine:
 
     def __init__(
         self,
-        templates_paths: str | PathLike | Sequence[str | PathLike],
+        templates_paths: Union[str, PathLike, Sequence[Union[str, PathLike]]],
         pool: ConnectionPool,
         commit_on_exit: bool = True,
         str_templates_static_by_default: bool = False,
@@ -102,10 +102,10 @@ class Engine:
 
     def __exit__(
             self,
-            type_: type[BaseException] | None,
-            value: BaseException | None,
-            traceback: TracebackType | None,
-    ) -> bool | None:
+            type_: Optional[Type[BaseException]],
+            value: Optional[BaseException],
+            traceback: Optional[TracebackType],
+    ) -> Optional[bool]:
         return self.conn.__exit__(type_, value, traceback)
 
     def commit(self):
@@ -257,7 +257,7 @@ class MappedQuery(Generic[mapping.Result]):
         self,
         engine: Engine,
         lazy_query,
-        result: TypeAlias,
+        result: mapping.Result,
         relationships: Iterable[mapping.Relationship],
     ) -> None:
         self.engine = engine
@@ -287,7 +287,7 @@ class MappedQuery(Generic[mapping.Result]):
         /,
         _cursor: Cursor = None,
         **kwargs: Any,
-    ):
+    ) -> str:
         cursor = self._lazy_query().execute(
             params or kwargs,
             _cursor or self.engine.cursor,
@@ -300,14 +300,14 @@ class MappedQuery(Generic[mapping.Result]):
         /,
         _cursor: Cursor = None,
         **kwargs: Any,
-    ) -> list[mapping.Result]:
+    ) -> List[mapping.Result]:
         return list(self.iter(params or kwargs, _cursor=_cursor))
 
     def iter(
         self,
         params: CursorParams = None,
         /,
-        _batch: int | None = 500,
+        _batch: Optional[int] = 500,
         _cursor: Cursor = None,
         **kwargs: Any,
     ) -> Generator[mapping.Result, None, None]:
@@ -357,11 +357,11 @@ class MappedQuery(Generic[mapping.Result]):
 T = TypeVar('T')
 
 @doublewrap
-def in_transaction(fn: T, prop: str = 'db', type_: Type[Engine] = Engine) -> T:
+def in_transaction(fn: T, prop: str = 'db') -> T:
 
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         with getattr(self, prop).transaction():
             return fn(self, *args, **kwargs)
 
-    return add_extra_annotation(wrapper, prop, type_)
+    return wrapper

@@ -1,19 +1,18 @@
 from collections import defaultdict
 from functools import cached_property
-from typing import Iterable
 import inspect
 import typing
 from dataclasses import dataclass
-from typing import Type, Any
+from typing import Type, Any, Dict, Tuple, List, Optional, Iterable
 
 from .params import Relationship, ID, Name, ReduceNone
 from .types import Result, Accessor
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True)
 class Mapper:
     cls: Type[Any]
-    id: ID | None
+    id: Optional[ID]
     name: str
     reduce_null: bool
 
@@ -34,7 +33,7 @@ class Mapper:
         )
 
     @classmethod
-    def parse_annotated(cls, args: tuple[Any, ...]):
+    def parse_annotated(cls, args: Tuple[Any, ...]):
         type_param = None
         id_param = None
         name_param = None
@@ -80,18 +79,18 @@ class Mapper:
 
 
 class Context:
-    mappers: dict[str, Mapper]
-    rels: dict[str, list[Relationship]]
-    result_mappers: list[Mapper]
-    result_is_unary: bool | None
-    columns: tuple[str, ...] | None
-    fields_to_columns: dict[Mapper, dict[str, tuple[int, str]]]
+    mappers: Dict[str, Mapper]
+    rels: Dict[str, List[Relationship]]
+    result_mappers: List[Mapper]
+    result_is_unary: Optional[bool]
+    columns: Optional[Tuple[str, ...]]
+    fields_to_columns: Dict[Mapper, Dict[str, Tuple[int, str]]]
 
     def __init__(
         self,
         result: Result,
         relationships: Iterable[Relationship],
-        columns: tuple[str, ...],
+        columns: Tuple[str, ...],
     ):
         self.mappers = {}
         self.rels = defaultdict(list)
@@ -163,7 +162,7 @@ class Context:
             if not isinstance(rel.right, str):
                 self.parse_mapper(rel.right)
 
-    def parse_columns(self, columns: tuple[str, ...]):
+    def parse_columns(self, columns: Tuple[str, ...]):
         self.columns = columns
         for index, column in enumerate(columns):
             try:
@@ -177,5 +176,5 @@ class Context:
             self.fields_to_columns[mapper][field_name] = index, column
 
     @cached_property
-    def mappers_list(self) -> list[Mapper]:
+    def mappers_list(self) -> List[Mapper]:
         return list(self.mappers.values())

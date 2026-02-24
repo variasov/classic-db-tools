@@ -1,4 +1,5 @@
 from types import TracebackType
+from typing import Optional, Type
 
 from .types import Connection
 
@@ -15,11 +16,11 @@ class Transaction:
         return self
 
     def __exit__(
-        self,
-        type_: type[BaseException] | None,
-        value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> bool | None:
+            self,
+            type_: Optional[Type[BaseException]],
+            value: Optional[BaseException],
+            traceback: Optional[TracebackType],
+    ) -> Optional[bool]:
         if type_ is None:
             self.conn.commit()
         else:

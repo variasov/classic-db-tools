@@ -1,16 +1,16 @@
 from dataclasses import dataclass
-from typing import Type, Any
+from typing import Type, Any, Tuple, Union
 
 
-@dataclass(slots=True, init=False, unsafe_hash=True)
+@dataclass(init=False, unsafe_hash=True)
 class ID:
-    fields: tuple[str, ...]
+    fields: Tuple[str, ...]
 
     def __init__(self, *fields: str):
         self.fields = tuple(field.lower() for field in fields)
 
 
-@dataclass(slots=True, init=False, unsafe_hash=True)
+@dataclass(init=False, unsafe_hash=True)
 class Name:
     content: str
 
@@ -18,23 +18,23 @@ class Name:
         self.content = content.lower()
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True)
 class ReduceNone:
     value: bool
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Relationship:
-    left: Type[Any] | str
+    left: Union[Type[Any], str]
     field: str
-    right: Type[Any] | str
+    right: Union[Type[Any], str]
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True)
 class OneToOne(Relationship):
     pass
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(frozen=True)
 class OneToMany(Relationship):
     pass
