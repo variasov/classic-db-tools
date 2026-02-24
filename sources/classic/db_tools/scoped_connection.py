@@ -1,6 +1,6 @@
 import threading
 from types import TracebackType
-from typing import  Any
+from typing import Any, Optional, Type
 
 from .pool import ConnectionPool
 from .types import Connection
@@ -26,10 +26,10 @@ class ScopedConnection(threading.local):
 
     def __exit__(
             self,
-            type_: type[BaseException] | None,
-            value: BaseException | None,
-            traceback: TracebackType | None,
-    ) -> bool | None:
+            type_: Optional[Type[BaseException]],
+            value: Optional[BaseException],
+            traceback: Optional[TracebackType],
+    ) -> Optional[bool]:
         if not hasattr(self, '_conn'):
             return False
 

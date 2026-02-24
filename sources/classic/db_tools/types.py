@@ -1,9 +1,12 @@
-from typing import Any, Protocol, Sequence, Optional, TypeAlias
+from typing import (
+    Any, Protocol, Sequence, Optional,
+    Tuple, Dict, Union,
+)
 
 
-Row: TypeAlias = tuple[Any, ...]
-CursorParams: TypeAlias = dict[str, Any] | Row
-CursorDescription: TypeAlias = Sequence[tuple[str, int, int, int, int, bool]]
+Row = Tuple[Any, ...]
+CursorParams = Union[Dict[str, Any], Row]
+CursorDescription = Sequence[Tuple[str, int, int, int, int, bool]]
 
 
 class Cursor(Protocol):

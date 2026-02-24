@@ -1,6 +1,6 @@
 import ast
 from itertools import chain
-from typing import Iterable, Generator
+from typing import Iterable, Generator, List
 
 from .types import Accessor
 from .context import Context, Mapper
@@ -48,7 +48,7 @@ def render_cycle(ctx: Context, col_offset: int) -> ast.stmt:
 
 
 def render_check_for_none(
-    ctx: Context, col_offset: int, columns: list[int],
+    ctx: Context, col_offset: int, columns: List[int],
 ) -> ast.stmt:
     if len(columns) == 1:
         stmt = ast.Compare(

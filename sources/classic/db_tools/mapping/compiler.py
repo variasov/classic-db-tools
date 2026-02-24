@@ -1,5 +1,5 @@
 import ast
-from typing import Generator, Iterable, TypeAlias, Callable, TypeVar
+from typing import Generator, Iterable, Callable, TypeVar, Tuple
 
 from ..types import Row
 
@@ -9,13 +9,13 @@ from .render import render_module
 
 
 Result = TypeVar('Result')
-Mapper: TypeAlias = Callable[[], Generator[Result, Row, None]]
+Mapper = Callable[[], Generator[Result, Row, None]]
 
 
 def compile_mapper(
     result: Result,
     relationships: Iterable[Relationship],
-    columns: tuple[str, ...],
+    columns: Tuple[str, ...],
 ) -> Mapper[Result]:
     ctx = Context(result, relationships, columns)
 

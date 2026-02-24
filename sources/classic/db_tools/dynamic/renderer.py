@@ -1,12 +1,13 @@
-import threading
 from collections.abc import Iterable
+import threading
+from typing import Dict
 
 from markupsafe import Markup
 from jinja2 import Template
 
 
 class Renderer(threading.local):
-    bind_params: dict[str, object]
+    bind_params: Dict[str, object]
     param_style: str
     param_index: int
 
@@ -86,7 +87,7 @@ class Renderer(threading.local):
     def prepare_query(
         self,
         template: Template,
-        data: dict[str, object],
+        data: Dict[str, object],
         param_style: str,
     ):
         self.bind_params = {}
