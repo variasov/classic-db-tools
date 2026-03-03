@@ -26,7 +26,7 @@ class Engine:
         pool: ConnectionPool,
         commit_on_exit: bool = True,
         str_templates_static_by_default: bool = False,
-        identifier_quote_char: str = "'",
+        identifier_quote_char: Optional[str] = None,
     ):
         self.pool = pool
         self.conn = ScopedConnection(pool, commit_on_exit)
