@@ -1,86 +1,15 @@
 from collections import defaultdict
 from functools import cached_property
-import inspect
-import typing
-from dataclasses import dataclass
-from typing import Type, Any, Dict, Tuple, List, Optional, Iterable
+from typing import Dict, Tuple, List, Optional
 
-from .params import Relationship, ID, Name, ReduceNone
-from .types import Result, Accessor
-
-
-@dataclass(frozen=True)
-class Mapper:
-    cls: Type[Any]
-    id: Optional[ID]
-    name: str
-    reduce_null: bool
-
-    @classmethod
-    def create(
-        cls,
-        type_: Type[Any],
-        id: ID = None,
-        name: Name = None,
-        reduce_null: bool = None,
-    ) -> 'Mapper':
-        assert inspect.isclass(type_)
-        return cls(
-            type_,
-            id,
-            name.content if name else type_.__name__.lower(),
-            reduce_null if reduce_null is not None else id is not None,
-        )
-
-    @classmethod
-    def parse_annotated(cls, args: Tuple[Any, ...]):
-        type_param = None
-        id_param = None
-        name_param = None
-        reduce_none_param = None
-        for arg in args:
-            if isinstance(arg, ID):
-                id_param = arg
-            elif isinstance(arg, Name):
-                name_param = arg
-            elif isinstance(arg, ReduceNone):
-                reduce_none_param = arg
-            elif inspect.isclass(arg):
-                type_param = arg
-            else:
-                continue
-        return cls.create(type_param, id_param, name_param, reduce_none_param)
-
-    @classmethod
-    def parse_from_annotation(cls, annotation: Type[Any]):
-        origin = typing.get_origin(annotation)
-        if origin is None:
-            return cls.create(annotation)
-        args = typing.get_args(annotation)
-        if origin is typing.Annotated:
-            return cls.parse_annotated(args)
-        return origin, args
-
-    @property
-    def accessor(self) -> Accessor:
-        return 'item' if issubclass(self.cls, dict) else 'attr'
-
-    @property
-    def id_name(self) -> str:
-        return self.name + '_id'
-
-    @property
-    def id_map_name(self) -> str:
-        return self.name + '_map'
-
-    @property
-    def func_name(self) -> str:
-        return f'map_{self.name}'
+from .types import Result
+from .params import Relationship
+from .mappers import Mapper
 
 
 class Context:
     mappers: Dict[str, Mapper]
-    rels: Dict[str, List[Relationship]]
+    rels: Dict[str, Dict[str, Relationship]]
     result_mappers: List[Mapper]
     result_is_unary: Optional[bool]
     columns: Optional[Tuple[str, ...]]
@@ -89,20 +18,27 @@ class Context:
     def __init__(
         self,
         result: Result,
-        relationships: Iterable[Relationship],
+        mappers: Dict[str, Mapper],
         columns: Tuple[str, ...],
     ):
+        self.result = result
         self.mappers = {}
-        self.rels = defaultdict(list)
-        self.result_mappers = []
-        self.result_is_unary = None
+        self.rels = defaultdict(dict)
+        self.result_mappers = [
+            mappers[
+                result.lower()
+                if isinstance(result, str)
+                else result.__name__.lower()
+            ]
+        ]
+        self.result_is_unary = True
         self.columns = None
         self.fields_to_columns = defaultdict(dict)
-
-        self.parse_result(result)
-        self.parse_relationships(relationships)
-        self.parse_columns(columns)
+        self.parse_columns(columns, mappers)
         self.lineno = self._create_line_counter()
+
+        print(self.mappers)
+        print(self.rels)
 
     def column_for_field(self, mapper: Mapper, field: str) -> str:
         try:
@@ -123,56 +59,41 @@ class Context:
 
         return inc_and_return
 
-    def parse_mapper(self, annotation: typing.Any):
-        mapper = Mapper.parse_from_annotation(annotation)
-        if isinstance(mapper, Mapper):
-            if mapper.name not in self.mappers:
-                self.mappers[mapper.name] = mapper
-        return mapper
-
-    def mapper(self, annotation: typing.Any):
-        if isinstance(annotation, str):
-            return self.mappers[annotation]
-        return self.parse_mapper(annotation)
-
-    def parse_result(self, annotation: Result) -> None:
-        mapper = self.parse_mapper(annotation)
-        if isinstance(mapper, Mapper):
-            self.result_mappers.append(mapper)
-            self.result_is_unary = True
-        elif isinstance(mapper, tuple):
-            origin, args = mapper
-            if issubclass(origin, typing.Tuple):
-                self.result_is_unary = False
-                for arg in args:
-                    self.parse_mapper(arg)
-                    if isinstance(mapper, Mapper):
-                        self.result_mappers.append(mapper)
-
-    def parse_relationships(
-        self, relationships: Iterable[Relationship],
-    ) -> None:
-        for rel in relationships:
-            if isinstance(rel.left, str):
-                self.rels[rel.left].append(rel)
-            else:
-                mapper = self.parse_mapper(rel.left)
-                self.rels[mapper.name].append(rel)
-
-            if not isinstance(rel.right, str):
-                self.parse_mapper(rel.right)
-
-    def parse_columns(self, columns: Tuple[str, ...]):
+    def parse_columns(
+        self,
+        columns: Tuple[str, ...],
+        mappers: Dict[str, Mapper],
+    ):
         self.columns = columns
         for index, column in enumerate(columns):
             try:
-                mapper_name, field_name = column.lower().split('__')
+                prefix, field_name = column.lower().split('__')
             except ValueError as e:
                 raise ValueError(
                     f'Column {column} are not contains name of cls '
                     f'and name of field, concatenated with __'
                 ) from e
-            mapper = self.mappers[mapper_name]
+
+            mapper = mappers.get(prefix)
+            if not mapper:
+                for mapper_ in mappers.values():
+                    if mapper_.prefix == prefix:
+                        mapper = mapper_
+                        break
+                else:
+                    raise ValueError()
+
+            if mapper not in self.mappers:
+                self.mappers[mapper.name] = mapper
+
+                for mapper_ in mappers.values():
+                    for rel_field, rel in mapper_.relationships.items():
+                        if (
+                            rel.target_name == mapper.name and
+                            rel not in self.rels[mapper_.name]
+                        ):
+                            self.rels[mapper_.name][rel_field] = rel
+
             self.fields_to_columns[mapper][field_name] = index, column
 
     @cached_property

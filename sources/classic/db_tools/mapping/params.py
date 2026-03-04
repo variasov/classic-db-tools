@@ -1,40 +1,53 @@
-from dataclasses import dataclass
-from typing import Type, Any, Tuple, Union
+from dataclasses import dataclass, field
+from typing import Tuple, Optional, Dict, Union
 
+from frozendict import frozendict
 
-@dataclass(init=False, unsafe_hash=True)
-class ID:
-    fields: Tuple[str, ...]
-
-    def __init__(self, *fields: str):
-        self.fields = tuple(field.lower() for field in fields)
-
-
-@dataclass(init=False, unsafe_hash=True)
-class Name:
-    content: str
-
-    def __init__(self, content: str, /):
-        self.content = content.lower()
-
-
-@dataclass(frozen=True)
-class ReduceNone:
-    value: bool
+from .types import Target, Class
 
 
 @dataclass(frozen=True)
 class Relationship:
-    left: Union[Type[Any], str]
-    field: str
-    right: Union[Type[Any], str]
+    target: Target
+
+    @property
+    def target_name(self):
+        if isinstance(self.target, str):
+            return self.target.lower()
+        return self.target.__name__.lower()
 
 
 @dataclass(frozen=True)
-class OneToOne(Relationship):
+class Assign(Relationship):
     pass
 
 
 @dataclass(frozen=True)
-class OneToMany(Relationship):
+class Append(Relationship):
     pass
+
+
+@dataclass(frozen=True)
+class Add(Relationship):
+    pass
+
+
+@dataclass(frozen=True)
+class Parameter:
+    pass
+
+
+@dataclass(frozen=True)
+class Entity(Parameter):
+    id: Union[str, Tuple[str, ...]]
+    cls: Optional[Class] = None
+    prefix: Optional[str] = None
+    relationships: Dict[str, Relationship] = field(default_factory=frozendict)
+
+
+@dataclass(frozen=True)
+class Value(Parameter):
+    reduce_none: bool = False
+    cls: Optional[Class] = None
+    prefix: str = None
+    relationships: Dict[str, Relationship] = field(default_factory=frozendict)

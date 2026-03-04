@@ -3,8 +3,9 @@ from itertools import chain
 from typing import Iterable, Generator, List
 
 from .types import Accessor
-from .context import Context, Mapper
-from .params import OneToMany, OneToOne, Relationship
+from .context import Context
+from .params import Relationship, Assign, Append
+from .mappers import Mapper, EntityMapper, ValueMapper
 
 
 def render_identity_maps(ctx: Context, col_offset: int) -> Iterable[ast.stmt]:
@@ -137,24 +138,27 @@ def render_mapper_call(ctx: Context, col_offset: int, mapper: Mapper) -> ast.exp
 
 def render_rel_factory_call(
     ctx: Context, col_offset: int,
+    left: str, field: str,
     rel: Relationship,
     accessor: Accessor,
 ) -> Generator[ast.stmt, None, None]:
-    if isinstance(rel, OneToOne):
+    right: str = rel.target_name.lower()
+
+    if isinstance(rel, Assign):
         target = ast.Attribute(
             value=ast.Name(
-                id=ctx.mapper(rel.left).name,
+                id=ctx.mappers[left].name,
                 ctx=ast.Load(),
             ),
-            attr=rel.field,
+            attr=field,
             ctx=ast.Store(),
         )  if accessor == 'attr' else ast.Subscript(
             value=ast.Name(
-                id=ctx.mapper(rel.left).name,
+                id=ctx.mappers[left].name,
                 ctx=ast.Load(),
             ),
             slice=ast.Constant(
-                value=rel.field,
+                value=field,
             ),
             ctx=ast.Store(),
         )
@@ -163,18 +167,18 @@ def render_rel_factory_call(
             targets=[target],
             value=render_mapper_call(
                 ctx, col_offset,
-                ctx.mapper(rel.right),
+                ctx.mappers[right],
             ),
             lineno=ctx.lineno(),
             col_offset=col_offset,
         )
-    elif isinstance(rel, OneToMany):
-        left_mapper = ctx.mapper(rel.left)
+    elif isinstance(rel, Append):
+        left_mapper = ctx.mappers[left]
 
         if accessor == 'item':
             yield ast.If(
                 test=ast.Compare(
-                    left=ast.Constant(value=rel.field),
+                    left=ast.Constant(value=field),
                     ops=[ast.NotIn()],
                     comparators=[
                         ast.Name(id=left_mapper.name, ctx=ast.Load())
@@ -187,7 +191,7 @@ def render_rel_factory_call(
                                 value=ast.Name(
                                     id=left_mapper.name, ctx=ast.Load(),
                                 ),
-                                slice=ast.Constant(value=rel.field),
+                                slice=ast.Constant(value=field),
                                 ctx=ast.Store(),
                             ),
                         ],
@@ -202,19 +206,19 @@ def render_rel_factory_call(
             )
             value = ast.Subscript(
                 value=ast.Name(
-                    id=ctx.mapper(rel.left).name,
+                    id=ctx.mappers[left].name,
                     ctx=ast.Load(),
                 ),
-                slice=ast.Constant(value=rel.field),
+                slice=ast.Constant(value=field),
                 ctx=ast.Load(),
             )
         else:
             value = ast.Attribute(
                 value=ast.Name(
-                    id=ctx.mapper(rel.left).name,
+                    id=ctx.mappers[left].name,
                     ctx=ast.Load(),
                 ),
-                attr=rel.field,
+                attr=field,
                 ctx=ast.Load(),
             )
 
@@ -223,7 +227,7 @@ def render_rel_factory_call(
                 target=ast.Name(id='obj', ctx=ast.Store()),
                 value=ast.Call(
                     func=ast.Name(
-                        id=ctx.mapper(rel.right).func_name,
+                        id=ctx.mappers[right].func_name,
                         ctx=ast.Load(),
                     ),
                     args=[ast.Name(id='row', ctx=ast.Load())],
@@ -241,7 +245,7 @@ def render_rel_factory_call(
                         args=[
                             render_mapper_call(
                                 ctx, col_offset,
-                                ctx.mapper(rel.right),
+                                ctx.mappers[right],
                             )
                         ],
                         keywords=[],
@@ -258,10 +262,10 @@ def render_rel_factory_call(
         raise NotImplemented
 
 
-def render_obj_id(ctx: Context, col_offset: int, mapper: Mapper) -> ast.stmt:
+def render_obj_id(ctx: Context, col_offset: int, mapper: EntityMapper) -> ast.stmt:
     lineno = ctx.lineno()
-    if len(mapper.id.fields) == 1:
-        id_field = mapper.id.fields[0]
+    if len(mapper.id) == 1:
+        id_field = mapper.id[0]
         id_col = ctx.fields_to_columns[mapper][id_field][0]
         id_val = ast.Subscript(
             value=ast.Name(id='row', ctx=ast.Load()),
@@ -282,7 +286,7 @@ def render_obj_id(ctx: Context, col_offset: int, mapper: Mapper) -> ast.stmt:
                     lineno=lineno,
                     col_offset=col_offset,
                 )
-                for field in mapper.id.fields
+                for field in mapper.id
             ],
             ctx=ast.Load(),
             lineno=lineno,
@@ -350,13 +354,13 @@ def render_get_or_create(
     )
 
 
-def render_id_mapper(
-    ctx: Context, col_offset: int, mapper: Mapper
+def render_entity_mapper(
+    ctx: Context, col_offset: int, mapper: EntityMapper
 ) -> ast.stmt:
     id_columns = [
         cols[0]
         for field, cols in ctx.fields_to_columns[mapper].items()
-        if field in mapper.id.fields
+        if field in mapper.id
     ]
     lineno = ctx.lineno()
     return ast.FunctionDef(
@@ -376,9 +380,11 @@ def render_id_mapper(
             *render_get_or_create(ctx, col_offset + 1, mapper),
             *chain.from_iterable(
                 render_rel_factory_call(
-                    ctx, col_offset + 1, rel, mapper.accessor,
+                    ctx, col_offset + 1,
+                    mapper.name, field,
+                    rel, mapper.accessor,
                 )
-                for rel in ctx.rels[mapper.name]
+                for field, rel in ctx.rels[mapper.name].items()
             ),
             ast.Return(
                 value=ast.Name(id=mapper.name, ctx=ast.Load()),
@@ -392,21 +398,22 @@ def render_id_mapper(
     )
 
 
-def render_plain_mapper(
-    ctx: Context, col_offset: int, mapper: Mapper,
+def render_value_mapper(
+    ctx: Context, col_offset: int, mapper: ValueMapper,
 ) -> ast.stmt:
     lineno = ctx.lineno()
     columns = [col[0] for col in ctx.fields_to_columns[mapper].values()]
     body = []
-    if mapper.reduce_null:
+    if mapper.reduce_none:
         body.append(render_check_for_none(ctx, col_offset + 1, columns))
     body += [
         render_factory_call(ctx, col_offset + 1, mapper),
         *chain.from_iterable(
             render_rel_factory_call(
-                ctx, col_offset + 1, rel, mapper.accessor,
+                ctx, col_offset + 1, mapper.name,
+                field, rel, mapper.accessor,
             )
-            for rel in ctx.rels[mapper.name]
+            for field, rel in ctx.rels[mapper.name].items()
         ),
         ast.Return(
             value=ast.Name(id=mapper.name, ctx=ast.Load()),
@@ -436,10 +443,12 @@ def render_mappers(
     ctx: Context, col_offset: int
 ) -> Generator[ast.stmt, None, None]:
     for mapper in ctx.mappers.values():
-        if mapper.id:
-            yield render_id_mapper(ctx, col_offset, mapper)
+        if isinstance(mapper, EntityMapper):
+            yield render_entity_mapper(ctx, col_offset, mapper)
+        elif isinstance(mapper, ValueMapper):
+            yield render_value_mapper(ctx, col_offset, mapper)
         else:
-            yield render_plain_mapper(ctx, col_offset, mapper)
+            raise NotImplemented
 
 
 def render_cycle_body(

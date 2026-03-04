@@ -1,34 +1,31 @@
 import ast
-from typing import Generator, Iterable, Callable, TypeVar, Tuple
+from typing import Dict, Tuple
 
-from ..types import Row
-
-from .params import Relationship
 from .context import Context
 from .render import render_module
+from .mappers import Mapper
+from .types import MapperFunc, Result
 
 
-Result = TypeVar('Result')
-Mapper = Callable[[], Generator[Result, Row, None]]
-
-
-def compile_mapper(
+def compile_mapper_func(
     result: Result,
-    relationships: Iterable[Relationship],
+    mappers: Dict[str, Mapper],
     columns: Tuple[str, ...],
-) -> Mapper[Result]:
-    ctx = Context(result, relationships, columns)
+) -> MapperFunc:
+    ctx = Context(result, mappers, columns)
 
     ast_module = render_module(ctx)
     code = compile(ast_module, '<string>', 'exec')
     namespace = {
         mapper.cls.__name__: mapper.cls
-        for mapper in ctx.mappers.values()
+        for mapper in mappers.values()
     }
     exec(code, namespace)
     func = namespace['mapper_func']
 
     # Ради удобства отладки добавим код маппера
     func.sources = lambda: ast.unparse(ast_module)
+
+    print(func.sources())
 
     return func
