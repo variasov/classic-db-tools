@@ -55,9 +55,7 @@ class Mapper:
             elif inspect.isclass(target):
                 mapper_cls = Mapper.for_param(param)
                 name = target.__name__.lower()
-                mapper = mapper_cls.from_parameter(
-                    param, target, name, params,
-                )
+                mapper = mapper_cls.from_parameter(param, target, name, params)
             else:
                 raise NotImplemented
 

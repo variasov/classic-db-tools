@@ -35,10 +35,6 @@ class Context:
         self.columns = None
         self.fields_to_columns = defaultdict(dict)
         self.parse_columns(columns, mappers)
-        self.lineno = self._create_line_counter()
-
-        print(self.mappers)
-        print(self.rels)
 
     def column_for_field(self, mapper: Mapper, field: str) -> str:
         try:
@@ -47,17 +43,6 @@ class Context:
             raise ValueError(
                 f'For class {mapper.name} not found field {field}',
             ) from e
-
-    @staticmethod
-    def _create_line_counter():
-        _lineno = 0
-
-        def inc_and_return():
-            nonlocal _lineno
-            _lineno += 1
-            return _lineno
-
-        return inc_and_return
 
     def parse_columns(
         self,
@@ -81,7 +66,7 @@ class Context:
                         mapper = mapper_
                         break
                 else:
-                    raise ValueError()
+                    raise ValueError(f'Mapper with prefix {prefix} not found')
 
             if mapper not in self.mappers:
                 self.mappers[mapper.name] = mapper

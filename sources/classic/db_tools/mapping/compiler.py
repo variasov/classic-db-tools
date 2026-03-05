@@ -26,6 +26,4 @@ def compile_mapper_func(
     # Ради удобства отладки добавим код маппера
     func.sources = lambda: ast.unparse(ast_module)
 
-    print(func.sources())
-
     return func
