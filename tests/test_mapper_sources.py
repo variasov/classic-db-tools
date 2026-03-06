@@ -1,4 +1,4 @@
-from classic.db_tools import Engine, Entity
+from classic.db_tools import Engine, Mapper, Entity
 
 from .dto import Task
 
@@ -28,5 +28,5 @@ mapper_sources = '''def mapper_func(rows):
 def test__mapper__sources(engine: Engine):
     query = engine.query(
         'SELECT 1 AS task__id'
-    ).map_to(Task, {Task: Entity(id='id')})
+    ).map_to(Task, Mapper(task=Entity(Task, 'id')))
     assert query.sources() == mapper_sources

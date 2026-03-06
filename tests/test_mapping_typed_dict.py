@@ -2,7 +2,7 @@ from typing import TypedDict, List
 
 import pytest
 
-from classic.db_tools import Engine, Entity, Append
+from classic.db_tools import Engine, Entity, Append, Mapper, Value
 
 
 class Status(TypedDict):
@@ -16,12 +16,10 @@ class Task(TypedDict):
     statuses: List[Status]
 
 
-mapping = {
-    Task: Entity(id='id', relationships={
-        'statuses': Append(Status),
-    }),
-    Status: Entity(id='id'),
-}
+mapper = Mapper(
+    task=Entity(Task, 'id', statuses=Append('Status')),
+    status=Value(Status, True),
+)
 
 
 sql = '''
@@ -56,7 +54,7 @@ def tasks(engine: Engine, ddl):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
-    query = engine.query(sql, static=static).map_to(Task, mapping)
+    query = engine.query(sql, static=static).map_to(Task, mapper)
     assert query.all() == [
         Task(id=1, name='First', statuses=[
             Status(id=1, title='CREATED'),
@@ -84,14 +82,14 @@ def test_returning_with_rels__all__empty(engine: Engine, ddl, tasks, static):
         FROM tasks
         WHERE FALSE
     ''', static=static).map_to(
-        Task, mapping,
+        Task, mapper,
     ).all() == []
 
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
     assert engine.query(sql, static=static).map_to(
-        Task, mapping,
+        Task, mapper,
     ).one() == Task(id=1, name='First', statuses=[
         Status(id=1, title='CREATED'),
         Status(id=4, title='STARTED'),

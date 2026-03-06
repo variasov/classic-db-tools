@@ -1,8 +1,6 @@
-from .compiler import compile_mapper_func
+from .compiler import compile_mapper_func, Result, MapperFunc
 from .params import (
     Parameter, Relationship,
-    Entity, Value,
     Assign, Append, Add,
+    Entity, Value, Mapper,
 )
-from .mappers import Mapper
-from .types import Target, Result, MapperFunc

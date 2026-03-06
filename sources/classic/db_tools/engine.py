@@ -4,14 +4,12 @@ from types import TracebackType
 from typing import (
     Any, Iterable, Generator, Union, List,
     Sequence, Generic, Hashable,
-    Type, TypeVar, Callable, Optional, Dict,
+    Type, TypeVar, Callable, Optional,
 )
 import threading
 from pathlib import Path
 
-from .mapping import (
-    Result, Target, Parameter, MapperFunc, Mapper, compile_mapper_func,
-)
+from .mapping import Result, Mapper, MapperFunc, compile_mapper_func
 from .doublewrap import doublewrap
 from .pool import ConnectionPool
 from .types import Cursor, CursorParams, Row
@@ -27,14 +25,14 @@ class Engine:
         self,
         templates_paths: Union[str, PathLike, Sequence[Union[str, PathLike]]],
         pool: ConnectionPool,
-        mapping: Dict[Target, Parameter] = None,
+        mapper: Optional[Mapper] = None,
         commit_on_exit: bool = True,
         str_templates_static_by_default: bool = False,
         identifier_quote_char: str = "'",
     ):
         self.pool = pool
         self.conn = ScopedConnection(pool, commit_on_exit)
-        self.mapping = Mapper.resolve(mapping) if mapping else {}
+        self.mapper = mapper
         if isinstance(templates_paths, str):
             self.templates_paths = [templates_paths]
         elif isinstance(templates_paths, Path):
@@ -132,15 +130,18 @@ class Query:
 
     def map_to(
         self,
-        result: Result,
-        params: Dict[Target, Parameter] = None,
+        result: Union[Result, str],
+        mapper: Optional[Mapper] = None,
     ) -> 'MappedQuery[Result]':
-        mappers = Mapper.resolve(params) if params else self.engine.mapping
+        if isinstance(result, str):
+            result_ = result.lower()
+        else:
+            result_ = result.__name__.lower()
         return MappedQuery[Result](
             engine=self.engine,
             lazy_query=self._lazy_query,
-            result=result,
-            mappers=mappers,
+            result=result_,
+            mapper=mapper or self.engine.mapper,
         )
 
     def execute(
@@ -263,28 +264,28 @@ class MappedQuery(Generic[Result]):
         self,
         engine: Engine,
         lazy_query,
-        result: Result,
-        mappers: Dict[str, Mapper],
+        result: str,
+        mapper: Mapper,
     ) -> None:
         self.engine = engine
         self._lazy_query = lazy_query
-        self.result = result
-        self.mappers = mappers
+        self.result = result.lower()
+        self.mapper = mapper
         self._mapper = None
 
-        # For test simplicity
+        # Alias for test simplicity
         self._compile_mapper = compile_mapper_func
 
-    def mapper(self, cursor: Cursor) -> Callable[
+    def mapper_func(self, cursor: Cursor) -> Callable[
         [Iterable[Row]],
         Generator[Any, Any, None]
     ]:
         columns = tuple(column[0] for column in cursor.description)
-        key = (self.result, *self.mappers, *columns)
+        key = (self.result, self.mapper, columns)
         mapper = self.engine.get_mapper_from_cache(key)
         if not mapper:
             mapper = self._compile_mapper(
-                self.result, self.mappers, columns,
+                self.result, self.mapper, columns,
             )
             self.engine.cache_mapper(key, mapper)
         return mapper
@@ -300,7 +301,8 @@ class MappedQuery(Generic[Result]):
             params or kwargs,
             _cursor or self.engine.cursor,
         )
-        return self.mapper(cursor).sources()
+        func = self.mapper_func(cursor)
+        return getattr(func, 'sources', lambda: '')()
 
     def all(
         self,
@@ -323,7 +325,7 @@ class MappedQuery(Generic[Result]):
             params or kwargs,
             _cursor or self.engine.cursor,
         )
-        mapper = self.mapper(_cursor)
+        mapper = self.mapper_func(_cursor)
 
         if _batch:
             fetch = partial(_cursor.fetchmany, _batch)

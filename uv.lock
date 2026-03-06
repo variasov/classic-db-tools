@@ -11,14 +11,10 @@ dependencies = [
     { name = "jinja2" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "psycopg" },
     { name = "pytest" },
-]
-
-[package.dev-dependencies]
-dev = [
     { name = "ruff" },
 ]
 
@@ -26,14 +22,15 @@ dev = [
 requires-dist = [
     { name = "frozendict", specifier = "~=2.4.7" },
     { name = "jinja2", specifier = "~=3.1" },
-    { name = "psycopg", marker = "extra == 'dev'", specifier = "~=3.3" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = "==9.0.2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = "~=9.0" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.15.4" }]
+dev = [
+    { name = "psycopg", specifier = "~=3.3" },
+    { name = "pytest", specifier = "==9.0.2" },
+    { name = "pytest", specifier = "~=9.0" },
+    { name = "ruff", specifier = ">=0.15.4" },
+]
 
 [[package]]
 name = "colorama"
