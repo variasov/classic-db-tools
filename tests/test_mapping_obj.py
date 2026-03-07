@@ -20,8 +20,8 @@ sql = '''
 
 
 mapper = Mapper(
-    task=Entity(Task, 'id', statuses=Append('Status')),
-    status=Value(Status, True),
+    task=Entity(Task, 'id', statuses=Append('status')),
+    status=Value(Status),
 )
 
 
@@ -45,7 +45,8 @@ def tasks(engine: Engine, ddl):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
-    assert engine.query(sql, static=static).map_to(Task, mapper).all() == [
+    objects = engine.query(sql, static=static).map_to(Task, mapper=mapper).all()
+    assert objects == [
         Task(id=1, name='First', statuses=[
             Status(id=1, title='CREATED'),
             Status(id=4, title='STARTED'),
@@ -63,7 +64,8 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
-    assert engine.query(sql, static=static).map_to(Task, mapper).one() == (
+    obj = engine.query(sql, static=static).map_to(Task, mapper=mapper).one()
+    assert obj == (
         Task(id=1, name='First', statuses=[
             Status(id=1, title='CREATED'),
             Status(id=4, title='STARTED'),
@@ -86,8 +88,8 @@ def test_custom_name(engine: Engine):
             (1, 'First', 5, 'FINISHED')
     ) AS data(task_id, task_name, status_id, status_title)
     ''').map_to(
-        'custom',
-        Mapper(
+        prefix='custom',
+        mapper=Mapper(
             custom=Entity(Task, 'id', statuses=Append('another')),
             another=Entity(Status, 'id'),
         ),
@@ -123,8 +125,8 @@ def test_one_to_one(engine: Engine):
             (2, 1, 'VALUE')
     ) AS data(AnotherObj__id, SomeObj__id, SomeObj__value)
     ''').map_to(
-        'AnotherObj',
-        Mapper(
+        AnotherObj,
+        mapper=Mapper(
             AnotherObj=Entity(AnotherObj, 'id'),
             SomeObj=Entity(SomeObj, 'id'),
         )

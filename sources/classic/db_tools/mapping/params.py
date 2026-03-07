@@ -95,13 +95,13 @@ class Entity(Parameter):
 
 @dataclass(frozen=True, init=False)
 class Value(Parameter):
-    reduce_none: bool = False
+    reduce_none: bool
     relationships: Dict[str, Relationship] = field(default_factory=frozendict)
 
     def __init__(
         self,
         factory: Factory,
-        reduce_none: bool = False,
+        reduce_none: bool = True,
         /,
         **relationships: Relationship,
     ) -> None:

@@ -52,7 +52,7 @@ class StaticQueriesCache:
         self,
         filename: str = None,
         content: str = None,
-    ) ->  Callable[[], StaticQuery]:
+    ) -> Callable[[], StaticQuery]:
         if filename:
             key = filename
         elif content:

@@ -28,5 +28,5 @@ mapper_sources = '''def mapper_func(rows):
 def test__mapper__sources(engine: Engine):
     query = engine.query(
         'SELECT 1 AS task__id'
-    ).map_to(Task, Mapper(task=Entity(Task, 'id')))
+    ).map_to(Task, mapper=Mapper(task=Entity(Task, 'id')))
     assert query.sources() == mapper_sources
