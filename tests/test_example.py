@@ -1,12 +1,24 @@
+from dataclasses import dataclass
+
 import pytest
 
 from classic.db_tools import Engine
 
+from .dto import Task
+
+
+@dataclass
+class Task:
+    name: str
+    value: str
+
 
 @pytest.fixture
 def tasks(engine: Engine, ddl):
+    engine.query_from('example/save_task.sql').execute(
+        Task(name='1', value='value_1'),
+    )
     engine.query_from('example/save_task.sql').executemany([
-        {'name': '1', 'value': 'value_1'},
         {'name': '2', 'value': 'value_2'},
         {'name': '3', 'value': 'value_3'},
     ])
@@ -57,7 +69,7 @@ def test_insert(engine: Engine, ddl):
     assert engine.query_from('example/count.sql').scalar() == 0
 
     row_id = engine.query_from('example/save_task.sql').scalar(
-        name='1', value='value_1',
+        Task(name='1', value='value_1'),
     )
 
     assert (
@@ -70,7 +82,7 @@ def test_insert_many(engine: Engine, ddl):
     assert engine.query_from('example/count.sql').scalar() == 0
 
     engine.query_from('example/save_task.sql').executemany([
-        {'name': '1', 'value': 'value_1'},
+        Task(name='1', value='value_1'),
         {'name': '2', 'value': 'value_2'},
         {'name': '3', 'value': 'value_3'},
     ])
