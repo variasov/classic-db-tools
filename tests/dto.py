@@ -1,7 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, List
-
-from classic.components import factory
+from typing import List
 
 
 @dataclass
@@ -14,4 +12,4 @@ class Status:
 class Task:
     id: int
     name: str
-    statuses: list['Status'] = factory(list)
+    statuses: List[Status] = field(default_factory=list)

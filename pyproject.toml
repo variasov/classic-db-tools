@@ -7,7 +7,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'classic-db-tools'
-version = '0.2.1'
+version = '1.0.2'
 authors = [
     {name = "Sergey Variasov", email = "variasov@gmail.com"},
 ]
@@ -25,20 +25,24 @@ classifiers = [
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3 :: Only',
 ]
-requires-python = '>=3.8'
+requires-python = '>=3.10'
 dependencies = [
     'Jinja2~=3.1',
+    'frozendict~=2.4.7',
 ]
 
 [project.urls]
 Homepage = "https://github.com/variasov/classic-db-tools"
 
-[project.optional-dependencies]
-dev = [
-    'pytest~=6.2',
-    'psycopg~=3.2',
-]
-
 [tool.setuptools.packages.find]
 where = ['sources']
 namespaces = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.4",
+    "pytest~=9.0",
+    "psycopg~=3.3",
+    "pytest==9.0.2",
+    "classic-domain==0.2.0",
+]

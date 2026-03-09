@@ -1,11 +1,12 @@
+from dataclasses import dataclass
+
 import pytest
 
-from classic.components import component
 from classic.db_tools import Engine, in_transaction
 import psycopg
 
 
-@component
+@dataclass
 class SomeCls:
     db: Engine
 

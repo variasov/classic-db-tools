@@ -9,13 +9,17 @@ from typing import (
 import threading
 from pathlib import Path
 
+from .mapping import Result, Mapper, MapperFunc, compile_mapper_func
 from .doublewrap import doublewrap
 from .pool import ConnectionPool
 from .types import Cursor, CursorParams, Row
 from .transaction import Transaction
 from .scoped_connection import ScopedConnection
 
-from . import dynamic, static, mapping
+from . import dynamic, static
+
+
+QueryParams = Union[CursorParams, Any]
 
 
 class Engine:
@@ -24,12 +28,14 @@ class Engine:
         self,
         templates_paths: Union[str, PathLike, Sequence[Union[str, PathLike]]],
         pool: ConnectionPool,
+        mapper: Optional[Mapper] = None,
         commit_on_exit: bool = True,
         str_templates_static_by_default: bool = False,
         identifier_quote_char: Optional[str] = None,
     ):
         self.pool = pool
         self.conn = ScopedConnection(pool, commit_on_exit)
+        self.mapper = mapper
         if isinstance(templates_paths, str):
             self.templates_paths = [templates_paths]
         elif isinstance(templates_paths, Path):
@@ -55,7 +61,7 @@ class Engine:
     def get_mapper_from_cache(self, key: Hashable):
         return self.mapper_cache.get(key)
 
-    def cache_mapper(self, key: Hashable, value: mapping.Mapper):
+    def cache_mapper(self, key: Hashable, value: MapperFunc):
         with self.mapper_cache_lock:
             self.mapper_cache[key] = value
 
@@ -125,25 +131,36 @@ class Query:
         self.engine = engine
         self._lazy_query = lazy_query
 
-    def return_as(
+    def map_to(
         self,
-        result: mapping.Result,
-        *relationships: mapping.Relationship,
-    ) -> 'MappedQuery[mapping.Result]':
-        return MappedQuery[mapping.Result](
+        result: Result = None,
+        prefix: Optional[str] = None,
+        *,
+        mapper: Optional[Mapper] = None,
+    ) -> 'MappedQuery[Result]':
+        if prefix is None:
+            if result is None:
+                raise ValueError('Prefix or result must be specified')
+            prefix_ = result.__name__.lower()
+        else:
+            prefix_ = prefix.lower()
+        return MappedQuery[Result](
             engine=self.engine,
             lazy_query=self._lazy_query,
-            result=result,
-            relationships=relationships,
+            result=prefix_,
+            mapper=mapper or self.engine.mapper,
         )
 
     def execute(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
         cursor: Cursor = None,
         **kwargs: Any,
     ) -> Cursor:
+        if params is not None and not isinstance(params, (dict, tuple)):
+            params = params.__dict__
+
         return self._lazy_query().execute(
             params or kwargs,
             cursor or self.engine.cursor,
@@ -151,40 +168,52 @@ class Query:
 
     def executemany(
         self,
-        params: Sequence[CursorParams],
+        params: Iterable[QueryParams],
         cursor: Cursor = None,
     ) -> Cursor:
-        return self._lazy_query().executemany(
-            params, cursor or self.engine.cursor,
-        )
+        return self._lazy_query().executemany([
+            param
+            if isinstance(param, (dict, tuple))
+            else param.__dict__
+            for param in params
+        ], cursor or self.engine.cursor,)
 
     def all(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
         cursor: Cursor = None,
         **kwargs: Any,
     ):
+        if params is None:
+            params = kwargs
+        else:
+            if not isinstance(params, (dict, tuple)):
+                params = params.__dict__
+
         cursor = self._lazy_query().execute(
-            params or kwargs,
+            params,
             cursor or self.engine.cursor,
         )
         return cursor.fetchall()
 
     def iter(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
-        _batch: int = 500,
-        _cursor: Cursor = None,
+        batch_: int = 500,
+        cursor_: Cursor = None,
         **kwargs: Any,
     ) -> Generator[Any, None, None]:
-        _cursor = self._lazy_query().execute(
+        if params is not None and not isinstance(params, (dict, tuple)):
+            params = params.__dict__
+
+        cursor_ = self._lazy_query().execute(
             params or kwargs,
-            _cursor or self.engine.cursor,
+            cursor_ or self.engine.cursor,
         )
         while True:
-            batch = _cursor.fetchmany(_batch)
+            batch = cursor_.fetchmany(batch_)
             if not batch:
                 return
             for row in batch:
@@ -192,135 +221,160 @@ class Query:
 
     def one(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
-        _cursor: Cursor = None,
+        cursor_: Cursor = None,
         **kwargs: Any,
     ) -> Any:
-        _cursor = self._lazy_query().execute(
+        if params is not None and not isinstance(params, (dict, tuple)):
+            params = params.__dict__
+
+        cursor_ = self._lazy_query().execute(
             params or kwargs,
-            _cursor or self.engine.cursor,
+            cursor_ or self.engine.cursor,
         )
-        return _cursor.fetchone()
+        return cursor_.fetchone()
 
     def scalar(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
-        _raising: bool = False,
-        _cursor: Cursor = None,
+        raising_: bool = False,
+        cursor_: Cursor = None,
         **kwargs: Any,
     ) -> Any:
-        value = self.one(
+        if params is not None and not isinstance(params, (dict, tuple)):
+            params = params.__dict__
+
+        row = self.one(
             params or kwargs,
-            _raising=_raising,
-            _cursor=_cursor or self.engine.cursor,
+            raising_=raising_,
+            cursor_=cursor_ or self.engine.cursor,
         )
-        if not _raising and value is None:
+        if not raising_ and row is None:
             return None
-        return value[0]
+        return row[0]
 
     def scalars(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
-        _raising: bool = False,
-        _cursor: Cursor = None,
+        raising_: bool = False,
+        cursor_: Cursor = None,
         **kwargs: Any,
     ) -> Generator[Any, None, None]:
+        if params is not None and not isinstance(params, (dict, tuple)):
+            params = params.__dict__
+
         return (
             row[0] for row in self.iter(
                 params or kwargs,
-                _raising=_raising,
-                _cursor=_cursor or self.engine.cursor,
+                raising_=raising_,
+                cursor_=cursor_ or self.engine.cursor,
             )
         )
 
     def rowcount(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
-        _cursor: Cursor = None,
+        cursor_: Cursor = None,
         **kwargs: Any,
     ) -> int:
         """Количество строк, обработанных запросом"""
+
+        if params is not None and not isinstance(params, (dict, tuple)):
+            params = params.__dict__
+
         cursor = self._lazy_query().execute(
             params or kwargs,
-            _cursor or self.engine.cursor,
+            cursor_ or self.engine.cursor,
         )
         return cursor.rowcount
 
 
-class MappedQuery(Generic[mapping.Result]):
+class MappedQuery(Generic[Result]):
 
     def __init__(
         self,
         engine: Engine,
         lazy_query,
-        result: mapping.Result,
-        relationships: Iterable[mapping.Relationship],
+        result: str,
+        mapper: Mapper,
     ) -> None:
         self.engine = engine
         self._lazy_query = lazy_query
-        self.result = result
-        self.relationships = relationships
+        self.result = result.lower()
+        self.mapper = mapper
         self._mapper = None
-        self._compile_mapper = mapping.compile_mapper
 
-    def mapper(self, cursor: Cursor) -> Callable[
+        # Alias for test simplicity
+        self._compile_mapper = compile_mapper_func
+
+    def mapper_func(self, cursor: Cursor) -> Callable[
         [Iterable[Row]],
         Generator[Any, Any, None]
     ]:
         columns = tuple(column[0] for column in cursor.description)
-        key = (self.result, *self.relationships, *columns)
+        key = (self.result, self.mapper, columns)
         mapper = self.engine.get_mapper_from_cache(key)
         if not mapper:
             mapper = self._compile_mapper(
-                self.result, self.relationships, columns,
+                self.result, self.mapper, columns,
             )
             self.engine.cache_mapper(key, mapper)
         return mapper
 
     def sources(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
-        _cursor: Cursor = None,
+        cursor_: Cursor = None,
         **kwargs: Any,
     ) -> str:
+        if params is not None and not isinstance(params, (dict, tuple)):
+            params = params.__dict__
+
         cursor = self._lazy_query().execute(
             params or kwargs,
-            _cursor or self.engine.cursor,
+            cursor_ or self.engine.cursor,
         )
-        return self.mapper(cursor).sources()
+        func = self.mapper_func(cursor)
+        return getattr(func, 'sources', lambda: '')()
 
     def all(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
-        _cursor: Cursor = None,
+        cursor_: Cursor = None,
         **kwargs: Any,
-    ) -> List[mapping.Result]:
-        return list(self.iter(params or kwargs, _cursor=_cursor))
+    ) -> List[Result]:
+        if params is not None and not isinstance(params, (dict, tuple)):
+            params = params.__dict__
+
+        return list(self.iter(params or kwargs, cursor_=cursor_))
 
     def iter(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
-        _batch: Optional[int] = 500,
-        _cursor: Cursor = None,
+        batch: Optional[int] = 500,
+        cursor_: Cursor = None,
         **kwargs: Any,
-    ) -> Generator[mapping.Result, None, None]:
-        _cursor = self._lazy_query().execute(
-            params or kwargs,
-            _cursor or self.engine.cursor,
-        )
-        mapper = self.mapper(_cursor)
+    ) -> Generator[Result, None, None]:
+        if params is not None and not isinstance(params, (dict, tuple)):
+            params = params.__dict__
 
-        if _batch:
-            fetch = partial(_cursor.fetchmany, _batch)
+        cursor_ = self._lazy_query().execute(
+            params or kwargs,
+            cursor_ or self.engine.cursor,
+        )
+        mapper = self.mapper_func(cursor_)
+
+        if batch:
+            fetch = partial(cursor_.fetchmany, batch)
         else:
-            fetch = _cursor.fetchall
+            fetch = cursor_.fetchall
 
         def rows_iter():
             while True:
@@ -335,16 +389,19 @@ class MappedQuery(Generic[mapping.Result]):
 
     def one(
         self,
-        params: CursorParams = None,
+        params: QueryParams = None,
         /,
-        _batch: int = 500,
-        _cursor: Cursor = None,
+        batch: int = 500,
+        cursor_: Cursor = None,
         **kwargs: Any,
-    ) -> mapping.Result:
+    ) -> Result:
+        if params is not None and not isinstance(params, (dict, tuple)):
+            params = params.__dict__
+
         iterator = self.iter(
             params or kwargs,
-            _batch,
-            _cursor or self.engine.cursor,
+            batch,
+            cursor_ or self.engine.cursor,
         )
         try:
             result = next(iterator)
