@@ -1,5 +1,5 @@
 import threading
-from typing import Iterable, Callable, Sequence
+from typing import Iterable, Callable, Sequence, Optional
 
 import jinja2
 
@@ -46,16 +46,17 @@ class DynamicQuery:
 
 
 class DynamicQueriesCache:
-    VALID_ID_QUOTE_CHARS = ('`', "'")
+    VALID_ID_QUOTE_CHARS = ('"', '`', "'")
 
     def __init__(
         self,
         templates_paths: Sequence[str],
-        identifier_quote_char: str = "'",
+        identifier_quote_char: Optional[str] = None,
     ):
-        assert identifier_quote_char in self.VALID_ID_QUOTE_CHARS
+        self.identifier_quote_char = identifier_quote_char or '"'
 
-        self.identifier_quote_char = identifier_quote_char
+        assert self.identifier_quote_char in self.VALID_ID_QUOTE_CHARS
+
         self.jinja = jinja2.Environment(
             loader=jinja2.FileSystemLoader(templates_paths),
             auto_reload=False,
