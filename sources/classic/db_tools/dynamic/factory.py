@@ -8,6 +8,7 @@ from classic.db_tools.types import Cursor, CursorParams
 
 from .renderer import Renderer
 from .extension import AutoBind
+from .criteria_macro import register_criteria_macro
 
 
 class DynamicQuery:
@@ -70,6 +71,9 @@ class DynamicQueriesCache:
                 self.identifier_quote_char,
             )
         )
+        if register_criteria_macro:
+            register_criteria_macro(self.jinja)
+
         self.cache = {}
         self.lock = threading.RLock()
 

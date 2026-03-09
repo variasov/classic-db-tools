@@ -16,12 +16,12 @@ def create_pool(
     env = os.environ
     return ConnectionPool(
         lambda: psycopg.connect(f'''
-                host={env.get('DB_HOST', 'localhost')}
-                port={env.get('DB_HOST', '5432')} 
-                dbname={env.get('DB_NAME', 'tasks')} 
-                user={env.get('DB_USER', 'test')} 
-                password={env.get('DB_PASSWORD', 'test')} 
-            ''', **factory_kwargs or {}),
+            host={env.get('DB_HOST', 'localhost')}
+            port={env.get('DB_HOST', '5432')} 
+            dbname={env.get('DB_NAME', 'tasks')} 
+            user={env.get('DB_USER', 'test')} 
+            password={env.get('DB_PASSWORD', 'test')} 
+        ''', **factory_kwargs or {}),
         **pool_kwargs or {},
     )
 

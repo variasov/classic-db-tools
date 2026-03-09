@@ -13,6 +13,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "classic-domain" },
     { name = "psycopg" },
     { name = "pytest" },
     { name = "ruff" },
@@ -26,10 +27,20 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "classic-domain", specifier = "==0.2.0" },
     { name = "psycopg", specifier = "~=3.3" },
     { name = "pytest", specifier = "==9.0.2" },
     { name = "pytest", specifier = "~=9.0" },
     { name = "ruff", specifier = ">=0.15.4" },
+]
+
+[[package]]
+name = "classic-domain"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/89/6ad54b2a4d4cb2c76452e99d7782c88eb69cf56ae8bfd063bbe20be0432c/classic_domain-0.2.0.tar.gz", hash = "sha256:8c490abc2f5c6605f3a334108f87d57ab79203408cb8ccf33d340a156fded984", size = 9486, upload-time = "2026-03-09T08:25:49.688Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/63/29f0d523a6a286ab992fa99d20c4f7365dd63b499282f5635ce12e3fe40a/classic_domain-0.2.0-py3-none-any.whl", hash = "sha256:408785e9c8d4ce573417767e09797b75eaa6683b34554d33f67dcccf884942ea", size = 8228, upload-time = "2026-03-09T08:25:48.593Z" },
 ]
 
 [[package]]

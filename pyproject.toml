@@ -44,4 +44,5 @@ dev = [
     "pytest~=9.0",
     "psycopg~=3.3",
     "pytest==9.0.2",
+    "classic-domain==0.2.0",
 ]
