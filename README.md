@@ -1,5 +1,3 @@
-from classic.db_tools import Appendfrom classic.db_tools import Mapperfrom tests.test_mapping_obj import mapperfrom tests.test_mapping_obj import SomeObj
-
 # Classic DB Tools
 
 Идея библиотеки заключается в попытке работать с SQL-запросами как с шаблонами Jinja.
