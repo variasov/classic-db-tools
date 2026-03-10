@@ -7,7 +7,7 @@ from typing import (
 )
 
 from .params import (
-    Parameter, Relationship, Assign, Append, Entity, Value, Mapper,
+    Parameter, Relationship, Assign, Append, Add, Entity, Value, Mapper,
 )
 from ..types import Row
 
@@ -237,8 +237,15 @@ def render_rel_factory_call(
         )
         yield ast.Assign([target], render_mapper_call(right))
 
-    elif isinstance(rel, Append):
+    elif isinstance(rel, (Append, Add)):
         if accessor == "item":
+            if isinstance(rel, Append):
+                default  = ast.List([], ast.Load())
+            elif isinstance(rel, Add):
+                default = ast.Set([])
+            else:
+                raise NotImplemented
+
             yield ast.If(
                 test=ast.Compare(
                     left=ast.Constant(field),
@@ -254,7 +261,7 @@ def render_rel_factory_call(
                                 ast.Store(),
                             ),
                         ],
-                        ast.List([], ast.Load()),
+                        default,
                     )
                 ],
                 orelse=[],
@@ -281,8 +288,10 @@ def render_rel_factory_call(
             body=[
                 ast.Expr(
                     ast.Call(
-                        func=ast.Attribute(value, "append", ast.Load()),
-                        args=[render_mapper_call(right)],
+                        func=ast.Attribute(
+                            value, rel.__class__.__name__.lower(), ast.Load(),
+                        ),
+                        args=[ast.Name('obj', ast.Load())],
                         keywords=[],
                     )
                 )
