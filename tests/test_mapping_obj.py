@@ -45,7 +45,8 @@ def tasks(engine: Engine, ddl):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
-    objects = engine.query(sql, static=static).map_to(Task, mapper=mapper).all()
+    query = engine.query(sql, static=static).map_to(Task, mapper=mapper)
+    objects = query.all()
     assert objects == [
         Task(id=1, name='First', statuses=[
             Status(id=1, title='CREATED'),

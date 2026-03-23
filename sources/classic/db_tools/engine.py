@@ -1,4 +1,5 @@
 from functools import wraps, partial
+import logging
 from os import PathLike
 from types import TracebackType
 from typing import (
@@ -29,6 +30,7 @@ class Engine:
         templates_paths: Union[str, PathLike, Sequence[Union[str, PathLike]]],
         pool: ConnectionPool,
         mapper: Optional[Mapper] = None,
+        logger: logging.Logger = None,
         commit_on_exit: bool = True,
         str_templates_static_by_default: bool = False,
         identifier_quote_char: Optional[str] = None,
@@ -36,6 +38,8 @@ class Engine:
         self.pool = pool
         self.conn = ScopedConnection(pool, commit_on_exit)
         self.mapper = mapper
+        self.logger = logger or logging.getLogger('classic-db-tools')
+
         if isinstance(templates_paths, str):
             self.templates_paths = [templates_paths]
         elif isinstance(templates_paths, Path):
@@ -48,10 +52,12 @@ class Engine:
                 'PathLike or Sequence[Str | PathLike]'
             )
         self.dynamic_templates = dynamic.DynamicQueriesCache(
+            self.logger,
             templates_paths=self.templates_paths,
             identifier_quote_char=identifier_quote_char,
         )
         self.static_templates = static.StaticQueriesCache(
+            self.logger,
             templates_paths=self.templates_paths,
         )
         self.mapper_cache = {}

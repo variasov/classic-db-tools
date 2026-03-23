@@ -1,7 +1,17 @@
-{% macro is_ready(criteria) -%}
-    started_at IS NULL
+{% macro is_finished(criteria) -%}
+    EXISTS(
+        SELECT TRUE
+        FROM (
+            SELECT task_status.title
+            FROM task_status
+            WHERE tasks.id = task_status.task_id
+            ORDER BY task_status.created_at DESC
+            LIMIT 1
+        ) AS last_status
+        WHERE last_status.title = 'FINISHED'
+    )
 {%- endmacro %}
 
-{% macro payload_greater_than(criteria) -%}
-    length(payload) > {{ criteria.payload }}
+{% macro older_than(criteria) -%}
+    now() - tasks.created_at < {{ criteria.period }}::interval
 {%- endmacro %}

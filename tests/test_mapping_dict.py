@@ -45,7 +45,6 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
     query = engine.query(sql, static=static).map_to(
         prefix='task', mapper=mapper,
     )
-    print(query.sources())
     assert query.all() == [
         dict(id=1, name='First', statuses={
             frozendict(id=1, title='CREATED'),

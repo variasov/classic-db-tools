@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any
-from typing import Callable
-from typing import Optional
+from typing import Any, Callable, Optional
 import threading
 import queue
 import logging
@@ -32,26 +30,26 @@ class ConnectionPool:
     A connection pool implementation using a queue to provide thread-safety.
     """
 
-    #: A callable returning a db-api connection object
+    # A callable returning a db-api connection object
     connection_factory: Callable[[], ConnType]
 
-    #: How many simultaneous connections to allow. If zero the number will be
-    #: unlimited
+    # How many simultaneous connections to allow. If zero the number will be
+    # unlimited
     limit: int
 
-    #: Callable to release a connection. Must return True if the connection
-    #: may be reused, else False.
+    # Callable to release a connection. Must return True if the connection
+    # may be reused, else False.
     before_release: Optional[Callable[[ConnType], bool]]
 
-    #: Callable called every time a connection is acquired to validate
-    #: that it is still alive
+    # Callable called every time a connection is acquired to validate
+    # that it is still alive
     validate: Optional[Callable[[ConnType], bool]]
 
     # Maintain the pool in a queue for thread/process safety
     queue_class = queue.Queue
     lock_class = threading.Lock
 
-    #: How long to wait for a connection to become available
+    # How long to wait for a connection to become available
     timeout: float = 5.0
 
     _pool: queue.Queue
@@ -111,18 +109,18 @@ class ConnectionPool:
             f"{self.max_validation_retries} attempts"
         )
 
-    def connect(self):
+    def connect(self) -> 'ContextManagerWrappedConnection':
         """
         Return a context manager that manages acquiring and releasing a
         connection.
         """
         return ContextManagerWrappedConnection(self)
 
-    def set_validator(self, v):
+    def set_validator(self, v: poolvalidators.ConnectionValidator) -> None:
         self.validate = v.validate
         self.before_release = v.before_release
 
-    def auto_validate(self, conn):
+    def auto_validate(self, conn: ConnType) -> bool:
         validator = poolvalidators.ConnectionValidator()
 
         for cls in poolvalidators.validators:
@@ -132,7 +130,7 @@ class ConnectionPool:
         self.set_validator(validator)
         return validator.validate(conn)
 
-    def _connect(self):
+    def _connect(self) -> ConnType:
         conn = self.connection_factory()  # type: ignore
         self.connections_created += 1
         self.reached_limit = (
@@ -140,7 +138,7 @@ class ConnectionPool:
         )
         return conn
 
-    def release(self, conn: ConnType):
+    def release(self, conn: ConnType) -> None:
         reuse = self.before_release(conn) if self.before_release else True
         if reuse:
             self._pool.put(conn)
@@ -154,13 +152,17 @@ class ConnectionPool:
 
 
 class ContextManagerWrappedConnection:
-    def __init__(self, pool):
+    conn: ConnType
+    pool: ConnectionPool
+
+    def __init__(self, pool: ConnectionPool):
         self.conn = None
         self.pool = pool
 
-    def __enter__(self):
+    def __enter__(self) -> ConnType:
         self.conn = self.pool.getconn()
         return self.conn
 
-    def __exit__(self, exc_type, exc_value, tb):
+    def __exit__(self, exc_type, exc_value, tb) -> bool:
         self.pool.release(self.conn)
+        return False

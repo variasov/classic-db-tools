@@ -1,31 +1,59 @@
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-from classic.db_tools import Engine, Mapper, Value
-from classic.domain import criteria
+from classic.db_tools import Engine, Mapper, Entity
+from classic.criteria import criteria
+import pytest
+
+
+@pytest.fixture
+def tasks(engine: Engine, ddl):
+    engine.query_from('example/save_task.sql').executemany([
+        {'name': 'First', 'value': ''},
+        {'name': 'Second', 'value': ''},
+        {'name': 'Third', 'value': ''},
+        {'name': 'Four', 'value': ''},
+    ])
+    engine.query('''
+    INSERT INTO task_status (title, task_id, created_at)
+    VALUES (%(title)s, %(task_id)s, %(created_at)s)
+    RETURNING id;
+    ''', static=True).executemany([
+        {'title': 'CREATED', 'task_id': 1, 'created_at': datetime(2000, 1, 1, 0, 0, 0)},
+        {'title': 'STARTED', 'task_id': 1, 'created_at': datetime(2000, 1, 1, 0, 1, 0)},
+        {'title': 'FINISHED', 'task_id': 1, 'created_at': datetime(2000, 1, 1, 0, 2, 0)},
+        {'title': 'CREATED', 'task_id': 2, 'created_at': datetime(2000, 1, 1, 0, 0, 0)},
+        {'title': 'CREATED', 'task_id': 3, 'created_at': datetime(2000, 1, 1, 0, 0, 0)},
+    ])
+    yield
 
 
 @dataclass
 class Task:
     id: int
-    payload: str
+    name: str
 
     @criteria
-    def is_ready(self):
+    def is_finished(self):
         pass
 
     @criteria
-    def payload_greater_than(self, payload: int):
+    def older_than(self, period: timedelta):
         pass
 
 
-mapper = Mapper(task=Value(Task))
+mapper = Mapper(task=Entity(Task, 'id'))
 
-def test_render_criteria(engine: Engine):
-    crit = Task.is_ready() & Task.payload_greater_than(payload=1)
+
+def test_render_criteria(engine: Engine, ddl, tasks):
+    crit = Task.is_finished() & Task.older_than(
+        period=timedelta(microseconds=1),
+    )
+
     objects = engine.query_from(
         'tasks/find.sql.tmpl'
     ).map_to(
         Task, mapper=mapper,
     ).all(criteria=crit)
 
-    assert objects == [Task(2, '12345')]
+    assert objects == [Task(1, 'First')]

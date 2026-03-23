@@ -206,7 +206,7 @@ SELECT * FROM {{ table|identifier }}
 В разных БД идентификаторы выделяются разными знаками препинания.
 К примеру, Postgres использует двойные кавычки:
 ```sql
-SELECT * FROM "public"."some_table"
+SELECT * FROM experiments."some_table"
 ```
 MS SQL Server использует `:
 ```sql

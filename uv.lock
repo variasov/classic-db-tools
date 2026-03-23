@@ -3,17 +3,30 @@ revision = 3
 requires-python = ">=3.10"
 
 [[package]]
+name = "classic-criteria"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b8/c6/1b034369abea1bfa41438fd4f52ed0fb1095670b356e2ef25d042a380955/classic_criteria-0.1.0.tar.gz", hash = "sha256:266869b616689e709836464b0dc0d1a8c7b672260dc5668627fb9778a6709f00", size = 9653, upload-time = "2026-03-13T08:29:32.045Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3e/00/84cd907560a5c5df6140f95b78557f82893faf7fb23522e103335bef0719/classic_criteria-0.1.0-py3-none-any.whl", hash = "sha256:ad404273f17a07433686ecbc62b8702226003b06a82470debacc983ec45e235d", size = 8552, upload-time = "2026-03-13T08:29:23.251Z" },
+]
+
+[[package]]
 name = "classic-db-tools"
-version = "1.0.0"
+version = "1.0.6"
 source = { editable = "." }
 dependencies = [
     { name = "frozendict" },
     { name = "jinja2" },
 ]
 
+[package.optional-dependencies]
+criteria = [
+    { name = "classic-criteria" },
+]
+
 [package.dev-dependencies]
 dev = [
-    { name = "classic-domain" },
     { name = "psycopg" },
     { name = "pytest" },
     { name = "ruff" },
@@ -21,26 +34,18 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "classic-criteria", marker = "extra == 'criteria'", specifier = "~=0.1" },
     { name = "frozendict", specifier = "~=2.4.7" },
     { name = "jinja2", specifier = "~=3.1" },
 ]
+provides-extras = ["criteria"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "classic-domain", specifier = "==0.2.0" },
     { name = "psycopg", specifier = "~=3.3" },
     { name = "pytest", specifier = "==9.0.2" },
     { name = "pytest", specifier = "~=9.0" },
     { name = "ruff", specifier = ">=0.15.4" },
-]
-
-[[package]]
-name = "classic-domain"
-version = "0.2.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/29/89/6ad54b2a4d4cb2c76452e99d7782c88eb69cf56ae8bfd063bbe20be0432c/classic_domain-0.2.0.tar.gz", hash = "sha256:8c490abc2f5c6605f3a334108f87d57ab79203408cb8ccf33d340a156fded984", size = 9486, upload-time = "2026-03-09T08:25:49.688Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/63/29f0d523a6a286ab992fa99d20c4f7365dd63b499282f5635ce12e3fe40a/classic_domain-0.2.0-py3-none-any.whl", hash = "sha256:408785e9c8d4ce573417767e09797b75eaa6683b34554d33f67dcccf884942ea", size = 8228, upload-time = "2026-03-09T08:25:48.593Z" },
 ]
 
 [[package]]
