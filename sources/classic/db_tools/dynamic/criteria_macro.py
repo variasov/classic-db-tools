@@ -2,7 +2,7 @@ from jinja2 import Environment
 
 
 try:
-    from classic.domain import Criteria, And, Or, Xor, Invert
+    from classic.criteria import Criteria, And, Or, Xor, Invert
 
     def traverse(criteria: Criteria, translators) -> str:
         if isinstance(criteria, And):
@@ -51,11 +51,17 @@ try:
             return False
 
 
-    def register_criteria_macro(env: Environment):
-        env.globals.update({
-            'traverse': traverse,
-            'contains': contains,
-        })
-
 except ImportError:
-    register_criteria_macro = None
+
+    def traverse(criteria: Criteria, translators) -> str:
+        raise RuntimeError('classic-criteria not installed')
+
+    def contains(criteria: Criteria, *translators) -> bool:
+        raise RuntimeError('classic-criteria not installed')
+
+
+def register_criteria_macro(env: Environment):
+    env.globals.update({
+        'traverse': traverse,
+        'contains': contains,
+    })

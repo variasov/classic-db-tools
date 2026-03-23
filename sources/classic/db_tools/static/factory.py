@@ -1,3 +1,4 @@
+import logging
 from typing import Sequence, Callable
 
 import os
@@ -10,9 +11,11 @@ class StaticQuery:
 
     def __init__(
         self,
+        logger: logging.Logger,
         filepath: str = None,
         content: str = None,
     ):
+        self.logger = logger
         assert filepath is None or content is None
         if filepath:
             self.filepath = filepath
@@ -29,6 +32,7 @@ class StaticQuery:
         params: CursorParams = None,
         cursor: Cursor = None,
     ) -> Cursor:
+        self.logger.debug(self.content)
         cursor.execute(self.content, params)
         return cursor
 
@@ -37,13 +41,15 @@ class StaticQuery:
         params: Sequence[CursorParams],
         cursor: Cursor = None,
     ) -> Cursor:
+        self.logger.debug(self.content)
         cursor.executemany(self.content, params)
         return cursor
 
 
 class StaticQueriesCache:
 
-    def __init__(self, templates_paths: Sequence[str]):
+    def __init__(self, logger: logging.Logger, templates_paths: Sequence[str]):
+        self.logger = logger
         self.cache = {}
         self.templates_paths = templates_paths
         self.lock = threading.RLock()
@@ -68,7 +74,7 @@ class StaticQueriesCache:
                         for path in self.templates_paths:
                             filepath = os.path.join(path, filename)
                             if os.path.exists(filepath):
-                                obj = StaticQuery(filepath=filepath)
+                                obj = StaticQuery(self.logger, filepath=filepath)
                                 break
                         if obj is None:
                             raise FileNotFoundError(
@@ -76,7 +82,7 @@ class StaticQueriesCache:
                                 f'{self.templates_paths} dirs'
                             )
                     elif content:
-                        obj = StaticQuery(content=content)
+                        obj = StaticQuery(self.logger, content=content)
                     else:
                         raise NotImplemented
 

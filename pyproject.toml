@@ -7,7 +7,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'classic-db-tools'
-version = '1.0.5'
+version = '1.0.6'
 authors = [
     {name = "Sergey Variasov", email = "variasov@gmail.com"},
 ]
@@ -38,11 +38,15 @@ Homepage = "https://github.com/variasov/classic-db-tools"
 where = ['sources']
 namespaces = true
 
+[project.optional-dependencies]
+criteria = [
+    "classic-criteria~=0.1",
+]
+
 [dependency-groups]
 dev = [
     "ruff>=0.15.4",
     "pytest~=9.0",
     "psycopg~=3.3",
     "pytest==9.0.2",
-    "classic-domain==0.2.0",
 ]

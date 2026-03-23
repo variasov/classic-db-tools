@@ -1,3 +1,4 @@
+import logging
 import threading
 from typing import Iterable, Callable, Sequence, Optional
 
@@ -15,9 +16,11 @@ class DynamicQuery:
 
     def __init__(
         self,
+        logger: logging.Logger,
         renderer: Renderer,
         template: jinja2.Template,
     ):
+        self.logger = logger
         self.renderer = renderer
         self.template = template
 
@@ -29,6 +32,7 @@ class DynamicQuery:
         sql, ordered_params = self.renderer.prepare_query(
             self.template, params, recognize_param_style(cursor),
         )
+        self.logger.debug(sql)
         cursor.execute(sql, ordered_params)
         return cursor
 
@@ -41,6 +45,7 @@ class DynamicQuery:
             sql, ordered_params = self.renderer.prepare_query(
                 self.template, param, recognize_param_style(cursor),
             )
+            self.logger.debug(sql)
             cursor.execute(sql, ordered_params)
         return cursor
 
@@ -50,6 +55,7 @@ class DynamicQueriesCache:
 
     def __init__(
         self,
+        logger: logging.Logger,
         templates_paths: Sequence[str],
         identifier_quote_char: Optional[str] = None,
     ):
@@ -72,11 +78,11 @@ class DynamicQueriesCache:
                 self.identifier_quote_char,
             )
         )
-        if register_criteria_macro:
-            register_criteria_macro(self.jinja)
+        register_criteria_macro(self.jinja)
 
         self.cache = {}
         self.lock = threading.RLock()
+        self.logger = logger
 
     def create_lazy(
         self,
@@ -101,7 +107,7 @@ class DynamicQueriesCache:
                     else:
                         raise NotImplemented
 
-                    obj = DynamicQuery(self.renderer, template)
+                    obj = DynamicQuery(self.logger, self.renderer, template)
                     self.cache[key] = obj
 
             return obj

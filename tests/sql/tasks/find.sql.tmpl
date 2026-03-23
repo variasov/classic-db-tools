@@ -1,8 +1,7 @@
 {% import 'tasks/criteria.sql.tmpl' as tasks %}
 
 SELECT
-    id      AS Task__id,
-    payload AS Task__payload
-
-FROM tasks.do_something
+    tasks.id   AS Task__id,
+    tasks.name AS Task__name
+FROM tasks
 WHERE {{ traverse(criteria, tasks) | safe }}
