@@ -13,3 +13,9 @@ class Task:
     id: int
     name: str
     statuses: List[Status] = field(default_factory=list)
+
+
+@dataclass
+class TaskGroup:
+    id: int
+    tasks: List[Task] = field(default_factory=list)
