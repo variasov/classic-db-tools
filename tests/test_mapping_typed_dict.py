@@ -2,7 +2,7 @@ from typing import TypedDict, List
 
 import pytest
 
-from classic.db_tools import Engine, Entity, Append, Mapper, Value
+from classic.db_tools import Engine, Entity, Append, Value
 
 
 class Status(TypedDict):
@@ -16,7 +16,7 @@ class Task(TypedDict):
     statuses: List[Status]
 
 
-mapper = Mapper(
+mapper = dict(
     task=Entity(Task, 'id', statuses=Append('Status')),
     status=Value(Status, True),
 )
@@ -54,7 +54,7 @@ def tasks(engine: Engine, ddl):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
-    query = engine.query(sql, static=static).map_to(Task, mapper=mapper)
+    query = engine.query(sql, static=static).map_to(Task, **mapper)
     assert query.all() == [
         Task(id=1, name='First', statuses=[
             Status(id=1, title='CREATED'),
@@ -82,13 +82,13 @@ def test_returning_with_rels__all__empty(engine: Engine, ddl, tasks, static):
         FROM tasks
         WHERE FALSE
     ''', static=static).map_to(
-        Task, mapper=mapper,
+        Task, **mapper,
     ).all() == []
 
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
-    obj = engine.query(sql, static=static).map_to(Task, mapper=mapper).one()
+    obj = engine.query(sql, static=static).map_to(Task, **mapper).one()
     assert obj == Task(id=1, name='First', statuses=[
         Status(id=1, title='CREATED'),
         Status(id=4, title='STARTED'),

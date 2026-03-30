@@ -36,8 +36,8 @@ def conn_pool():
 @pytest.fixture(scope='function')
 def engine(conn_pool):
     with Engine(
-        os.path.join(os.path.dirname(__file__), 'sql'),
         conn_pool,
+        os.path.join(os.path.dirname(__file__), 'sql'),
         commit_on_exit=False,
     ) as engine:
         yield engine

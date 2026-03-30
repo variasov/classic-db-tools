@@ -1,10 +1,10 @@
 from classic.db_tools import Engine, ConnectionPool
 
-from .conftest import SQL_DIR_PATH, create_pool
+from .conftest import create_pool
 
 
 def test_engine_commits(conn_pool: ConnectionPool) -> None:
-    engine = Engine(SQL_DIR_PATH, conn_pool)
+    engine = Engine(conn_pool)
     with engine:
         engine.query(
             'CREATE TABLE example(a int, b int)'
@@ -27,7 +27,7 @@ def test_engine_commits(conn_pool: ConnectionPool) -> None:
 
 def test_engine_with_autocommit() -> None:
     conn_pool = create_pool(dict(autocommit=True), dict(limit=1))
-    engine = Engine(SQL_DIR_PATH, conn_pool, commit_on_exit=False)
+    engine = Engine(conn_pool, commit_on_exit=False)
     with engine:
         engine.query(
             'CREATE TABLE example(a int, b int)'
@@ -48,7 +48,7 @@ def test_engine_with_autocommit() -> None:
 
 def test_engine_with_autocommit_and_tx() -> None:
     conn_pool = create_pool(dict(autocommit=True), dict(limit=1))
-    engine = Engine(SQL_DIR_PATH, conn_pool, commit_on_exit=False)
+    engine = Engine(conn_pool, commit_on_exit=False)
     with engine:
         with engine.transaction():
             engine.query(

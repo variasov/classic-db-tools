@@ -15,7 +15,9 @@ Factory = Union[Type[Any], Callable[[Any, ...], Any]]
 class Relationship:
     target: str
 
-    def __init__(self, target: str):
+    def __init__(self, target: Any):
+        if not isinstance(target, str):
+            target = target.__class__.__name__
         object.__setattr__(self, 'target', target.lower())
 
 
@@ -115,12 +117,11 @@ class Value(Parameter):
         self._parse_relationships(relationships)
 
 
-@dataclass(frozen=True, init=False)
-class Mapper:
-    params: frozendict[str, Parameter] = field(default_factory=frozendict)
+Mapping = frozendict[str, Parameter]
 
-    def __init__(self, **params: Parameter) -> None:
-        object.__setattr__(self, 'params', frozendict((
-            (key.lower(), value)
-            for key, value in params.items()
-        )))
+
+def create_mapping(**params: Parameter) -> Mapping:
+    return frozendict((
+        (key.lower(), value)
+        for key, value in params.items()
+    ))

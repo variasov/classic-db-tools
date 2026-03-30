@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-from classic.db_tools import Engine, Mapper, Entity
+from classic.db_tools import Engine, Entity
 from classic.criteria import criteria
 import pytest
 
@@ -42,7 +42,7 @@ class Task:
         pass
 
 
-mapper = Mapper(task=Entity(Task, 'id'))
+mapper = dict()
 
 
 def test_render_criteria(engine: Engine, ddl, tasks):
@@ -53,7 +53,7 @@ def test_render_criteria(engine: Engine, ddl, tasks):
     objects = engine.query_from(
         'tasks/find.sql.tmpl'
     ).map_to(
-        Task, mapper=mapper,
+        Task, task=Entity(Task, 'id'),
     ).all(criteria=crit)
 
     assert objects == [Task(1, 'First')]

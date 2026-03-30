@@ -380,23 +380,18 @@ FROM some_table;
 в каком регистре писать префиксы и поля.
 Библиотека внутри все имена переведет в нижний регистр.
 
-Затем нужно создать маппер:
+Затем нужно объявить маппинг и сделать запрос::
 ```python
-from classic.db_tools import Mapper, Entity
+from classic.db_tools import Engine, Entity
 
-mapper = Mapper(
+mapping = dict(
     someobj=Entity(Task, 'id'),
 )
-```
-
-И сделать запрос:
-```python
-from classic.db_tools import Engine
 
 engine = Engine(
-    path_to_sql,
     some_con_pool,
-    mapper=mapper,
+    templates_dirs='some/sql/dir',
+    default_mapping=mapping,
 )
 
 with engine:
@@ -407,8 +402,8 @@ with engine:
 print(task)
 ```
 
-Названия полей маппера, подаваемые в конструктор, должны соответствовать
-префиксам из запроса. Значения, передаваемые в конструктор - это параметры 
+Названия полей маппера, подаваемые в словарь mapping, должны соответствовать
+префиксам из запроса. Значения, содержащиеся в mapping - это параметры 
 маппера, они могут быть Entity и Value. В любом случае, первым аргументов 
 подается класс, на который осуществляется маппинг.
 
@@ -438,7 +433,7 @@ None, и объект при этом "легален" и имеет смысл 
 маппер сокращает до None такие объекты, но это поведение можно изменить, указав
 вторым неименованным аргументом False:
 ```python
-mapper = Mapper(
+mapper = dict(
     some_val=Value(SomeObj, False)
 )
 ```
@@ -491,9 +486,9 @@ obj = engine.query_from('test.sql').map_to('task').one()
 Append используется для обработки списков, реализуя OneToMany. При использовании
 Append маппер будет использовать метод .append() у указанного свойства:
 ```python
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from classic.db_tools import Mapper, Entity, Value
+from classic.db_tools import Entity, Value, Append
 
 
 @dataclass
@@ -508,10 +503,13 @@ class Task:
     statuses: list[Status] = field(default_factory=list)
 
     
-mapper = Mapper(
+mapping = dict(
     task=Entity(Task, 'id', statuses=Append('status')),
     status=Value(Status)
 )
+
+pool = ConnectionPool(...)
+engine = Engine(pool, default_mapping=mapping)
 
 with engine:
     tasks = engine.query('''
@@ -543,7 +541,7 @@ Assign используется для присвоения объекта ук�
 ```python
 from dataclasses import dataclass
 
-from classic.db_tools import Mapper, Entity, Value
+from classic.db_tools import Engine, Entity, Value, Assign
 
 
 @dataclass
@@ -558,11 +556,13 @@ class Task:
     status: Status
 
     
-mapper = Mapper(
+mapping = dict(
     task=Entity(Task, 'id', status=Assign(Status)),
     status=Value(Status)
 )
 
+pool = ConnectionPool(...)
+engine = Engine(pool, default_mapping=mapping)
 
 with engine:
     tasks = engine.query('''
@@ -589,7 +589,7 @@ print(tasks)
 и автоматически догадываться об отношениях, поэтому маппер из примера выше
 можно сократить до:
 ```python
-mapper = Mapper(
+mapper = dict(
     task=Entity(Task, 'id'),
     status=Value(Status)
 )

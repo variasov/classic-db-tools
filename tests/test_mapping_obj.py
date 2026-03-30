@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from classic.db_tools import Engine, Mapper, Entity, Append, Value
+from classic.db_tools import Engine, Entity, Append, Value
 
 from .dto import Task, Status
 
@@ -19,7 +19,7 @@ sql = '''
 '''
 
 
-mapper = Mapper(
+mapper = dict(
     task=Entity(Task, 'id', statuses=Append('status')),
     status=Value(Status),
 )
@@ -45,7 +45,7 @@ def tasks(engine: Engine, ddl):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
-    query = engine.query(sql, static=static).map_to(Task, mapper=mapper)
+    query = engine.query(sql, static=static).map_to(Task, **mapper)
     objects = query.all()
     assert objects == [
         Task(id=1, name='First', statuses=[
@@ -65,7 +65,7 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
-    obj = engine.query(sql, static=static).map_to(Task, mapper=mapper).one()
+    obj = engine.query(sql, static=static).map_to(Task, **mapper).one()
     assert obj == (
         Task(id=1, name='First', statuses=[
             Status(id=1, title='CREATED'),
@@ -89,11 +89,10 @@ def test_custom_name(engine: Engine):
             (1, 'First', 5, 'FINISHED')
     ) AS data(task_id, task_name, status_id, status_title)
     ''').map_to(
-        prefix='custom',
-        mapper=Mapper(
-            custom=Entity(Task, 'id', statuses=Append('another')),
-            another=Entity(Status, 'id'),
-        ),
+        Task,
+        'custom',
+        custom=Entity(Task, 'id', statuses=Append('another')),
+        another=Entity(Status, 'id'),
     ).one()
     assert objects == Task(id=1, name='First', statuses=[
         Status(id=1, title='CREATED'),
@@ -127,10 +126,8 @@ def test_one_to_one(engine: Engine):
     ) AS data(AnotherObj__id, SomeObj__id, SomeObj__value)
     ''').map_to(
         AnotherObj,
-        mapper=Mapper(
-            AnotherObj=Entity(AnotherObj, 'id'),
-            SomeObj=Entity(SomeObj, 'id'),
-        )
+        AnotherObj=Entity(AnotherObj, 'id'),
+        SomeObj=Entity(SomeObj, 'id'),
     ).all()
     assert objects == [
         AnotherObj(id=1, some_obj=SomeObj(1, 'VALUE')),

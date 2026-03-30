@@ -1,10 +1,10 @@
 import pytest
 from frozendict import frozendict
 
-from classic.db_tools import Engine, Entity, Mapper, Value, Add
+from classic.db_tools import Engine, Entity, Value, Add
 
 
-mapper = Mapper(
+mapper = dict(
     task=Entity(dict, 'id', statuses=Add('status')),
     status=Value(frozendict),
 )
@@ -42,9 +42,7 @@ def tasks(engine: Engine, ddl):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
-    query = engine.query(sql, static=static).map_to(
-        prefix='task', mapper=mapper,
-    )
+    query = engine.query(sql, static=static).map_to(dict, 'task', **mapper)
     assert query.all() == [
         dict(id=1, name='First', statuses={
             frozendict(id=1, title='CREATED'),
@@ -71,16 +69,12 @@ def test_returning_with_rels__all__empty(engine: Engine, ddl, tasks, static):
             1 AS Status__title
         FROM tasks
         WHERE FALSE
-    ''', static=static).map_to(
-        prefix='task', mapper=mapper,
-    ).all() == []
+    ''', static=static).map_to(dict, 'task', **mapper).all() == []
 
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
-    obj = engine.query(sql, static=static).map_to(
-        prefix='task', mapper=mapper,
-    ).one()
+    obj = engine.query(sql, static=static).map_to(dict, 'task', **mapper).one()
     assert obj == dict(id=1, name='First', statuses={
         frozendict(id=1, title='CREATED'),
         frozendict(id=4, title='STARTED'),
