@@ -15,12 +15,10 @@ class Task:
 
 @pytest.fixture
 def tasks(engine: Engine, ddl):
-    engine.query_from('example/save_task.sql').execute(
-        Task(name='1', value='value_1'),
-    )
     engine.query_from('example/save_task.sql').executemany([
-        {'name': '2', 'value': 'value_2'},
-        {'name': '3', 'value': 'value_3'},
+        {'name': '1', 'value': 'value_1', 'group': 1},
+        {'name': '2', 'value': 'value_2', 'group': 1},
+        {'name': '3', 'value': 'value_3', 'group': 2},
     ])
     engine.query_from('example/save_task_statuses.sql').executemany([
         {'title': 'ready', 'task_id': 1},
@@ -69,7 +67,7 @@ def test_insert(engine: Engine, ddl):
     assert engine.query_from('example/count.sql').scalar() == 0
 
     row_id = engine.query_from('example/save_task.sql').scalar(
-        Task(name='1', value='value_1'),
+        dict(name='1', value='value_1', group=1),
     )
 
     assert (
@@ -82,9 +80,9 @@ def test_insert_many(engine: Engine, ddl):
     assert engine.query_from('example/count.sql').scalar() == 0
 
     engine.query_from('example/save_task.sql').executemany([
-        Task(name='1', value='value_1'),
-        {'name': '2', 'value': 'value_2'},
-        {'name': '3', 'value': 'value_3'},
+        {'name': '1', 'value': 'value_1', 'group': 1},
+        {'name': '2', 'value': 'value_2', 'group': 2},
+        {'name': '3', 'value': 'value_3', 'group': 3},
     ])
 
     assert engine.query_from('example/get_all.sql').all() == [

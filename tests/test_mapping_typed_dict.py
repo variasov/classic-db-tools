@@ -37,10 +37,10 @@ sql = '''
 @pytest.fixture
 def tasks(engine: Engine, ddl):
     engine.query_from('example/save_task.sql').executemany([
-        {'name': 'First', 'value': ''},
-        {'name': 'Second', 'value': ''},
-        {'name': 'Third', 'value': ''},
-        {'name': 'Four', 'value': ''},
+        {'name': 'First', 'value': '', 'group': 1},
+        {'name': 'Second', 'value': '', 'group': 1},
+        {'name': 'Third', 'value': '', 'group': 2},
+        {'name': 'Four', 'value': '', 'group': 2},
     ])
     engine.query_from('example/save_task_statuses.sql').executemany([
         {'title': 'CREATED', 'task_id': 1},

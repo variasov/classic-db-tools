@@ -2,6 +2,7 @@ CREATE TABLE tasks (
     id serial PRIMARY KEY,
     name varchar NULL,
     value varchar NULL,
+    group_ int,
     created_at timestamptz DEFAULT now()
 );
 

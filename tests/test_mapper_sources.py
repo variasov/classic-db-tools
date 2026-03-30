@@ -6,23 +6,26 @@ from .dto import Task
 mapper_sources = '''def mapper_func(rows):
     task_map = {}
 
-    def map_task(rows):
+    def map_task(row):
         if row[0] is None:
-            return None
+            return (None, None)
         task_id = row[0]
-        task = task_map.get(task_id)
-        if task is None:
-            task = task_map[task_id] = Task(id=row[0])
-        return task
-    last_root = None
-    for row in rows:
-        root = map_task(row)
-        if last_root is not root:
-            if last_root is not None:
-                yield last_root
-            last_root = root
-    if last_root is not None:
-        yield last_root'''
+        obj_with_rels = task_map.get(task_id)
+        if obj_with_rels is None:
+            task = Task(id=row[0])
+            task_map[task_id] = (task,)
+        else:
+            task, = obj_with_rels
+        return (task, task_id)
+    last_obj = None
+    for row_ in rows:
+        obj, _ = map_task(row_)
+        if last_obj is not obj:
+            if last_obj is not None:
+                yield last_obj
+            last_obj = obj
+    if last_obj is not None:
+        yield last_obj'''
 
 
 def test__mapper__sources(engine: Engine):
