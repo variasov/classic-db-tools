@@ -7,7 +7,7 @@ from typing import (
 )
 
 from .params import (
-    Parameter, Relationship, Assign, Append, Add, Entity, Value, Mapper,
+    Parameter, Relationship, Assign, Append, Add, Entity, Value, Mapping,
 )
 from ..types import Row
 
@@ -38,15 +38,15 @@ class Context:
     def __init__(
         self,
         result: str,
-        mapper: Mapper,
+        mapping: Mapping,
         columns: Tuple[Column, ...],
     ):
         self.mapper = {}
         self.rels = defaultdict(dict)
-        self.result = (result, mapper.params[result])
+        self.result = (result, mapping[result])
         self.columns = None
         self.fields_to_columns = defaultdict(dict)
-        self.parse_columns(columns, mapper)
+        self.parse_columns(columns, mapping)
 
     @staticmethod
     def accessor(param: Parameter) -> Accessor:
@@ -67,7 +67,7 @@ class Context:
     def parse_columns(
         self,
         columns: Tuple[Column, ...],
-        mapper: Mapper,
+        mapping: Mapping,
     ):
         self.columns = columns
         for index_, column in enumerate(columns):
@@ -79,14 +79,14 @@ class Context:
                     f'and name of field, concatenated with __'
                 ) from e
 
-            param = mapper.params.get(prefix)
+            param = mapping.get(prefix)
             if not param:
                 raise ValueError(f'Prefix {prefix} not found in mapper')
 
             if param not in self.mapper:
                 self.mapper[prefix] = param
 
-                for prefix_, param_ in mapper.params.items():
+                for prefix_, param_ in mapping.items():
                     for rel_field, rel in param_.relationships.items():
                         if (
                             rel.target == prefix and
@@ -99,7 +99,7 @@ class Context:
 
 def compile_mapper_func(
     result: Result,
-    mapper: Mapper,
+    mapper: Mapping,
     columns: Tuple[Column, ...],
 ) -> MapperFunc:
     ctx = Context(result, mapper, columns)

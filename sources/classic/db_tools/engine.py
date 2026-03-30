@@ -10,7 +10,12 @@ from typing import (
 import threading
 from pathlib import Path
 
-from .mapping import Result, Mapper, MapperFunc, compile_mapper_func
+from frozendict import frozendict
+from .mapping import (
+    Result, Parameter,
+    MapperFunc, compile_mapper_func,
+    Mapping, create_mapping,
+)
 from .doublewrap import doublewrap
 from .pool import ConnectionPool
 from .types import Cursor, CursorParams, Row
@@ -27,9 +32,12 @@ class Engine:
 
     def __init__(
         self,
-        templates_paths: Union[str, PathLike, Sequence[Union[str, PathLike]]],
         pool: ConnectionPool,
-        mapper: Optional[Mapper] = None,
+        /,
+        templates_dirs: Union[
+            str, PathLike, Sequence[Union[str, PathLike]]
+        ] = None,
+        default_mapping: Union[Mapping, dict[str, Parameter]] = None,
         logger: logging.Logger = None,
         commit_on_exit: bool = True,
         str_templates_static_by_default: bool = False,
@@ -37,20 +45,29 @@ class Engine:
     ):
         self.pool = pool
         self.conn = ScopedConnection(pool, commit_on_exit)
-        self.mapper = mapper
+
+        if default_mapping:
+            self.mapping = create_mapping(**default_mapping)
+        else:
+            self.mapping = frozendict()
+
         self.logger = logger or logging.getLogger('classic-db-tools')
 
-        if isinstance(templates_paths, str):
-            self.templates_paths = [templates_paths]
-        elif isinstance(templates_paths, Path):
-            self.templates_paths = [str(templates_paths)]
-        elif isinstance(templates_paths, Sequence):
-            self.templates_paths = templates_paths
+        if templates_dirs is None:
+            self.templates_paths = []
+        elif isinstance(templates_dirs, str):
+            self.templates_paths = [templates_dirs]
+        elif isinstance(templates_dirs, Path):
+            self.templates_paths = [str(templates_dirs)]
+        elif isinstance(templates_dirs, Sequence):
+            self.templates_paths = templates_dirs
         else:
             raise ValueError(
                 'templates_paths not an str, '
-                'PathLike or Sequence[Str | PathLike]'
+                'PathLike or Sequence[Str | PathLike], but %s',
+                templates_dirs,
             )
+
         self.dynamic_templates = dynamic.DynamicQueriesCache(
             self.logger,
             templates_paths=self.templates_paths,
@@ -139,10 +156,10 @@ class Query:
 
     def map_to(
         self,
-        result: Result = None,
+        result: Result,
         prefix: Optional[str] = None,
-        *,
-        mapper: Optional[Mapper] = None,
+        /,
+        **params: Parameter,
     ) -> 'MappedQuery[Result]':
         if prefix is None:
             if result is None:
@@ -150,11 +167,12 @@ class Query:
             prefix_ = result.__name__.lower()
         else:
             prefix_ = prefix.lower()
+        mapping_ = create_mapping(**params) if params else self.engine.mapping
         return MappedQuery[Result](
             engine=self.engine,
             lazy_query=self._lazy_query,
             result=prefix_,
-            mapper=mapper or self.engine.mapper,
+            mapping=mapping_,
         )
 
     def execute(
@@ -306,12 +324,12 @@ class MappedQuery(Generic[Result]):
         engine: Engine,
         lazy_query,
         result: str,
-        mapper: Mapper,
+        mapping: Mapping,
     ) -> None:
         self.engine = engine
         self._lazy_query = lazy_query
         self.result = result.lower()
-        self.mapper = mapper
+        self.mapping = mapping
         self._mapper = None
 
         # Alias for test simplicity
@@ -322,11 +340,11 @@ class MappedQuery(Generic[Result]):
         Generator[Any, Any, None]
     ]:
         columns = tuple(column[0] for column in cursor.description)
-        key = (self.result, self.mapper, columns)
+        key = (self.result, self.mapping, columns)
         mapper = self.engine.get_mapper_from_cache(key)
         if not mapper:
             mapper = self._compile_mapper(
-                self.result, self.mapper, columns,
+                self.result, self.mapping, columns,
             )
             self.engine.cache_mapper(key, mapper)
         return mapper
