@@ -53,10 +53,10 @@ try:
 
 except ImportError:
 
-    def traverse(criteria: Criteria, translators) -> str:
+    def traverse(criteria, translators) -> str:
         raise RuntimeError('classic-criteria not installed')
 
-    def contains(criteria: Criteria, *translators) -> bool:
+    def contains(criteria, *translators) -> bool:
         raise RuntimeError('classic-criteria not installed')
 
 
