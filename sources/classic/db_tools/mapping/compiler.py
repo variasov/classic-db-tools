@@ -157,7 +157,7 @@ def render_cycle(ctx: Context) -> ast.stmt:
             [ast.Name("obj", ast.Store())],
             ast.Call(
                 func=ast.Name(f'map_{ctx.result.prefix}', ast.Load()),
-                args=[ast.Name("row", ast.Load())],
+                args=[ast.Name("row_", ast.Load())],
                 keywords=[],
             )
         )

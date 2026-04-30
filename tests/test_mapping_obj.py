@@ -69,7 +69,6 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all__nested(engine: Engine, ddl, tasks, static):
     query = engine.query(sql, static=static).map_to(TaskGroup, 'task_group', **mapper)
-    print(query.sources())
     assert query.all() == [
         TaskGroup(id=1, tasks=[
             Task(id=1, name='First', statuses=[
@@ -160,3 +159,20 @@ def test_one_to_one(engine: Engine):
         AnotherObj(id=1, some_obj=SomeObj(1, 'VALUE')),
         AnotherObj(id=2, some_obj=SomeObj(1, 'VALUE')),
     ]
+
+
+def test_value(engine: Engine):
+    query = engine.query('''
+        SELECT 
+            data.task_id        AS custom__id,
+            data.task_name      AS custom__name
+        FROM (
+            VALUES (1, 'First')
+        ) AS data(task_id, task_name)
+    ''').map_to(
+        Task,
+        'custom',
+        custom=Value(Task),
+    )
+    assert query.one() == Task(id=1, name='First', statuses=[])
+
