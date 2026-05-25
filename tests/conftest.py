@@ -1,7 +1,6 @@
 import os.path
-from typing import Any
 
-from classic.db_tools import Engine, ConnectionPool
+from classic.db_tools import Engine
 import pytest
 import psycopg
 
@@ -9,40 +8,29 @@ import psycopg
 SQL_DIR_PATH = os.path.join(os.path.dirname(__file__), 'sql')
 
 
-def create_pool(
-    factory_kwargs: dict[str, Any] = None,
-    pool_kwargs: dict[str, Any] = None,
-) -> ConnectionPool:
+@pytest.fixture(scope='session')
+def engine():
     env = os.environ
-    return ConnectionPool(
+    return Engine(
+        psycopg,
         lambda: psycopg.connect(f'''
             host={env.get('DB_HOST', 'localhost')}
             port={env.get('DB_HOST', '5432')} 
             dbname={env.get('DB_NAME', 'tasks')} 
             user={env.get('DB_USER', 'test')} 
             password={env.get('DB_PASSWORD', 'test')} 
-        ''', **factory_kwargs or {}),
-        **pool_kwargs or {},
-    )
-
-
-@pytest.fixture
-def conn_pool():
-    yield create_pool(
-        dict(autocommit=False), dict(limit=1),
+        '''),
+        templates_dirs=os.path.join(os.path.dirname(__file__), 'sql'),
+        pool_kwargs=dict(limit=1),
     )
 
 
 @pytest.fixture(scope='function')
-def engine(conn_pool):
-    with Engine(
-        conn_pool,
-        os.path.join(os.path.dirname(__file__), 'sql'),
-        commit_on_exit=False,
-    ) as engine:
+def tx(engine: Engine):
+    with engine.transaction(commit=False):
         yield engine
 
 
-@pytest.fixture
-def ddl(engine: Engine):
-    return engine.query_from('example/ddl.sql').execute()
+@pytest.fixture(scope='function')
+def ddl(engine: Engine, tx):
+    yield engine.query_from('example/ddl.sql').execute()

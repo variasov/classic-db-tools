@@ -1,3 +1,6 @@
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS task_status;
+
 CREATE TABLE tasks (
     id serial PRIMARY KEY,
     name varchar NULL,

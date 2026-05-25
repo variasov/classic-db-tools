@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from types import ModuleType
 from typing import Any, Callable, Optional
 import threading
 import queue
 import logging
 
 from . import exceptions
-from . import poolvalidators
+from .conn_validator import ConnectionValidator
+
 
 logger = logging.getLogger(__name__)
 
@@ -56,23 +58,28 @@ class ConnectionPool:
 
     def __init__(
         self,
+        driver: ModuleType,
         connection_factory,
         timeout: float = 5.0,
         limit: int = 0,
-        validator: poolvalidators.ConnectionValidator = 'auto',
+        validator: ConnectionValidator = 'auto',
     ):
         self._pool = self.queue_class()
+        self.driver = driver
         self.lock = self.lock_class()
-        if isinstance(validator, poolvalidators.ConnectionValidator):
+
+        if isinstance(validator, ConnectionValidator):
             self.validate = validator.validate
             self.before_release = validator.before_release
         elif validator == "auto":
-            self.validate = self.auto_validate  # type: ignore
-            self.before_release = None
+            validator = ConnectionValidator.validators[driver]()
+            self.validate = validator.validate
+            self.before_release = validator.before_release
         else:
             self.validate = None
             self.before_release = None
-        self.connection_factory = connection_factory  # type: ignore # noqa
+
+        self.connection_factory = connection_factory
         self.limit = limit
         self.max_validation_retries = self.limit + 3
 
@@ -85,7 +92,10 @@ class ConnectionPool:
         Return a connection from the pool.
         """
         try:
-            return self._pool.get(block=self.reached_limit, timeout=self.timeout)
+            return self._pool.get(
+                block=self.reached_limit,
+                timeout=self.timeout,
+            )
         except queue.Empty:
             if self.limit:
                 with self.lock:
@@ -115,20 +125,6 @@ class ConnectionPool:
         connection.
         """
         return ContextManagerWrappedConnection(self)
-
-    def set_validator(self, v: poolvalidators.ConnectionValidator) -> None:
-        self.validate = v.validate
-        self.before_release = v.before_release
-
-    def auto_validate(self, conn: ConnType) -> bool:
-        validator = poolvalidators.ConnectionValidator()
-
-        for cls in poolvalidators.validators:
-            if isinstance(conn, cls):
-                validator = poolvalidators.validators[cls]()
-                break
-        self.set_validator(validator)
-        return validator.validate(conn)
 
     def _connect(self) -> ConnType:
         conn = self.connection_factory()  # type: ignore

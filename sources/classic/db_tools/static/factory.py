@@ -86,8 +86,7 @@ class StaticQueriesCache:
                     else:
                         raise NotImplemented
 
-                    with self.lock:
-                        self.cache[key] = obj
+                    self.cache[key] = obj
 
             return obj
 

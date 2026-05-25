@@ -4,8 +4,6 @@ import pytest
 
 from classic.db_tools import Engine
 
-from .dto import Task
-
 
 @dataclass
 class Task:
@@ -25,7 +23,6 @@ def tasks(engine: Engine, ddl):
         {'title': 'active', 'task_id': 2},
         {'title': 'completed', 'task_id': 3},
     ])
-    yield
 
 
 def test_iter(engine: Engine, tasks):

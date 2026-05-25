@@ -3,6 +3,7 @@ from typing import Union
 
 from classic.db_tools.types import Connection, Cursor
 
+
 known_styles = {}
 
 
