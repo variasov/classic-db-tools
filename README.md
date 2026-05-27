@@ -20,16 +20,16 @@ engine = Engine('path/to/sql/templates/dir', pool)
 
 # При входе движок займет соединение в пуле,
 # на выходе, по дефолту, закоммитит
-with engine:
+with engine.conn():
     # Создание схемы:
     engine.query_from('tasks/ddl.sql').execute()
-
+    
     # Сохранение данных
     engine.query_from('tasks/save.sql').executemany([
         {'title': 'Some Task', 'body': 'Do something'},
         {'title': 'Another Task', 'body': 'Do anything'},
     ])
-
+    
     # Получение данных
     task = engine.query_from('tasks/get_by_id.sql').one(id=1)
     # (1, 'Some Task', 'Do something')
@@ -394,10 +394,9 @@ engine = Engine(
     default_mapping=mapping,
 )
 
-with engine:
-    task = engine.query_from(
-        'example_select.sql',
-    ).map_to(Task).one(id=1)
+task = engine.query_from(
+    'example_select.sql',
+).map_to(Task).one(id=1)
 
 print(task)
 ```
@@ -511,15 +510,14 @@ mapping = dict(
 pool = ConnectionPool(...)
 engine = Engine(pool, default_mapping=mapping)
 
-with engine:
-    tasks = engine.query('''
-    SELECT
-        tasks.id AS task__id,
-        tasks.id AS task__title,
-        statuses.title AS status__title
-    FROM tasks
-    JOIN statuses ON statuses.task_id = tasks.id
-    ''').map_to(Task).all()
+tasks = engine.query('''
+SELECT
+    tasks.id AS task__id,
+    tasks.id AS task__title,
+    statuses.title AS status__title
+FROM tasks
+JOIN statuses ON statuses.task_id = tasks.id
+''').map_to(Task).all()
 
 print(tasks)
 # [
@@ -564,15 +562,14 @@ mapping = dict(
 pool = ConnectionPool(...)
 engine = Engine(pool, default_mapping=mapping)
 
-with engine:
-    tasks = engine.query('''
-    SELECT
-        tasks.id AS task__id,
-        tasks.id AS task__title,
-        statuses.title AS status__title
-    FROM tasks
-    JOIN statuses ON statuses.task_id = tasks.id
-    ''').map_to(Task).all()
+tasks = engine.query('''
+SELECT
+    tasks.id AS task__id,
+    tasks.id AS task__title,
+    statuses.title AS status__title
+FROM tasks
+JOIN statuses ON statuses.task_id = tasks.id
+''').map_to(Task).all()
 
 print(tasks)
 # [

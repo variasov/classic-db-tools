@@ -21,7 +21,6 @@ def engine():
             password={env.get('DB_PASSWORD', 'test')} 
         '''),
         templates_dirs=os.path.join(os.path.dirname(__file__), 'sql'),
-        pool_kwargs=dict(limit=1),
     )
 
 

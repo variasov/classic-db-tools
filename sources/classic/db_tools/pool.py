@@ -18,13 +18,18 @@ import threading
 import queue
 import logging
 
-from . import exceptions
 from .conn_validator import ConnectionValidator
 
 
 logger = logging.getLogger(__name__)
 
 ConnType = Any
+
+
+class ConnectionLimitError(Exception):
+    """
+    The connection pool has run out of available connections
+    """
 
 
 class ConnectionPool:
@@ -87,7 +92,20 @@ class ConnectionPool:
         self.reached_limit = False
         self.timeout = timeout
 
-    def _getconn(self):
+    def acquire(self) -> ConnType:
+        if not self.validate:
+            return self._acquire()
+        for retry in range(self.max_validation_retries):
+            conn = self._acquire()
+            if self.validate(conn):
+                return conn
+            self.release(conn)
+        raise Exception(
+            f"Could not validate a connection after "
+            f"{self.max_validation_retries} attempts"
+        )
+
+    def _acquire(self):
         """
         Return a connection from the pool.
         """
@@ -100,24 +118,11 @@ class ConnectionPool:
             if self.limit:
                 with self.lock:
                     if self.reached_limit:
-                        raise exceptions.ConnectionLimitError()
+                        raise ConnectionLimitError()
                     else:
                         return self._connect()
             else:
                 return self._connect()
-
-    def getconn(self) -> ConnType:
-        if not self.validate:
-            return self._getconn()
-        for retry in range(self.max_validation_retries):
-            conn = self._getconn()
-            if self.validate(conn):
-                return conn
-            self.release(conn)
-        raise Exception(
-            f"Could not validate a connection after "
-            f"{self.max_validation_retries} attempts"
-        )
 
     def connect(self) -> 'ContextManagerWrappedConnection':
         """
@@ -141,10 +146,9 @@ class ConnectionPool:
         else:
             conn.close()
             if self.limit:
-                self.lock.acquire()
-                self.connections_created -= 1
-                self.reached_limit = self.connections_created >= self.limit
-                self.lock.release()
+                with self.lock:
+                    self.connections_created -= 1
+                    self.reached_limit = self.connections_created >= self.limit
 
 
 class ContextManagerWrappedConnection:
@@ -156,7 +160,7 @@ class ContextManagerWrappedConnection:
         self.pool = pool
 
     def __enter__(self) -> ConnType:
-        self.conn = self.pool.getconn()
+        self.conn = self.pool.acquire()
         return self.conn
 
     def __exit__(self, exc_type, exc_value, tb) -> bool:

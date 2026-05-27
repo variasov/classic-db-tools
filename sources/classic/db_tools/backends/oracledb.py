@@ -7,10 +7,10 @@ from ..transaction import Transaction
 class OracleDBTransaction(Transaction, driver=oracledb):
 
     def _at_enter(self):
-        self.current.conn.autocommit = False
+        self._current.conn.autocommit = False
 
     def _at_exit(self):
-        self.current.conn.autocommit = True
+        self._current.conn.autocommit = True
 
 
 class OracleDBConnectionValidator(ConnectionValidator, driver=oracledb):

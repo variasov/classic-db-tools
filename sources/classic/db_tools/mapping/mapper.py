@@ -1,20 +1,18 @@
 import ast
 from collections import defaultdict
 from itertools import chain
-from typing import (
-    Iterable, List, Tuple, Dict, Optional,
-    Generator, Callable, TypeVar, Literal, NamedTuple,
-)
+from typing import Iterable, List, Tuple, Dict, Optional, Generator, NamedTuple
+import threading
+
+from classic.db_tools.types import Cursor
 
 from .params import (
-    Parameter, Relationship, Assign, Append, Add, Entity, Value, Mapping,
+    Parameter, Relationship, Assign, Append, Add,
+    Entity, Value, Mapping,
 )
-from ..types import Row
 
+from .types import Accessor, Result, MapperFunc
 
-Accessor = Literal['attr', 'item']
-Result = TypeVar('Result')
-MapperFunc = Callable[[], Generator[Result, Row, None]]
 
 # Aliases for readability
 Prefix = str
@@ -24,6 +22,32 @@ Column = str
 # Tuple positions for fields_to_columns
 index = 0
 col = 1
+
+
+class Mapper:
+
+    def __init__(self, mapping: Mapping):
+        self._cache = {}
+        self._lock = threading.RLock()
+        self._mapping = mapping
+        self._compile_mapper_func = compile_mapper_func
+
+    def func_for_cursor(
+        self,
+        cursor: Cursor,
+        mapping: Mapping,
+        result: str,
+    ) -> MapperFunc:
+        columns = tuple(column[0] for column in cursor.description)
+        key = (result, mapping or self._mapping, columns)
+
+        with self._lock:
+            mapper = self._cache.get(key)
+            if not mapper:
+                mapper = self._compile_mapper_func(*key)
+                self._cache[key] = mapper
+
+        return mapper
 
 
 class ResultParam(NamedTuple):

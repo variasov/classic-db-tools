@@ -7,7 +7,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'classic-db-tools'
-version = '2.0.3'
+version = '3.0.0'
 authors = [
     {name = "Sergey Variasov", email = "variasov@gmail.com"},
 ]
