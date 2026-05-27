@@ -30,12 +30,13 @@ sql = '''
         task_status.title   AS Status__title
     FROM tasks
     LEFT JOIN task_status ON task_status.task_id = tasks.id
-    ORDER BY tasks.id, task_status.id 
+    ORDER BY tasks.id, task_status.id
 '''
 
 
 @pytest.fixture
 def tasks(engine: Engine, ddl):
+    _ = ddl
     engine.query_from('example/save_task.sql').executemany([
         {'name': 'First', 'value': '', 'group': 1},
         {'name': 'Second', 'value': '', 'group': 1},
@@ -54,6 +55,7 @@ def tasks(engine: Engine, ddl):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
+    _ = ddl, tasks
     query = engine.query(sql, static=static).map_to(Task, **mapper)
     assert query.all() == [
         Task(id=1, name='First', statuses=[
@@ -73,6 +75,7 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__all__empty(engine: Engine, ddl, tasks, static):
+    _ = ddl, tasks
     assert engine.query('''
         SELECT
             1 AS Task__id,
@@ -88,6 +91,7 @@ def test_returning_with_rels__all__empty(engine: Engine, ddl, tasks, static):
 
 @pytest.mark.parametrize('static', (True, False))
 def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
+    _ = ddl, tasks
     obj = engine.query(sql, static=static).map_to(Task, **mapper).one()
     assert obj == Task(id=1, name='First', statuses=[
         Status(id=1, title='CREATED'),

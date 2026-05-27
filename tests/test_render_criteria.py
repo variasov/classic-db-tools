@@ -8,6 +8,7 @@ import pytest
 
 @pytest.fixture
 def tasks_(engine: Engine, ddl):
+    _ = ddl
     engine.query_from('example/save_task.sql').executemany([
         {'name': 'First', 'value': '', 'group': 1},
         {'name': 'Second', 'value': '', 'group': 1},
@@ -45,6 +46,7 @@ mapper = dict()
 
 
 def test_render_criteria(engine: Engine, tasks_):
+    _ = tasks_
     crit = Task.is_finished() & Task.older_than(
         period=timedelta(microseconds=1),
     )

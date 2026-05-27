@@ -1,14 +1,14 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import inspect
 from typing import (
-    Any, Type, Callable, Tuple, Dict,
-    Union, get_args, get_origin, List, Set,
+    Any, Callable, Tuple, Dict, TypeAlias,
+    Union, get_args, get_origin, List, Set, Type,
 )
 
 from frozendict import frozendict
 
 
-Factory = Union[Type[Any], Callable[[Any, ...], Any]]
+Factory: TypeAlias = Union[Type[Any], Callable[[Any], Any]]
 
 
 @dataclass(frozen=True, init=False)
@@ -39,6 +39,7 @@ class Add(Relationship):
 @dataclass(frozen=True)
 class Parameter:
     factory: Factory
+    relationships: Dict[str, Relationship]
 
     def _parse_relationships(self, rels: Dict[str, Relationship]) -> None:
         try:
@@ -71,7 +72,6 @@ class Parameter:
 @dataclass(frozen=True, init=False)
 class Entity(Parameter):
     id: Union[str, Tuple[str, ...]]
-    relationships: Dict[str, Relationship] = field(default_factory=frozendict)
 
     def __init__(
         self,
@@ -84,12 +84,13 @@ class Entity(Parameter):
         object.__setattr__(self, 'factory', factory)
 
         # Set ID
-        object.__setattr__(
-            self, 'id',
-            (id_.lower(),)
-            if isinstance(id_, str) else
-            tuple((_.lower() for _ in id_))
-        )
+        if isinstance(id_, str):
+            id_ = (id_.lower(), )
+        elif isinstance(id, tuple):
+            id_ = tuple((_.lower() for _ in id_))
+        else:
+            raise NotImplementedError
+        object.__setattr__(self, 'id', id_)
 
         # Set relationships
         self._parse_relationships(relationships)
@@ -98,7 +99,6 @@ class Entity(Parameter):
 @dataclass(frozen=True, init=False)
 class Value(Parameter):
     reduce_none: bool
-    relationships: Dict[str, Relationship] = field(default_factory=frozendict)
 
     def __init__(
         self,
@@ -117,7 +117,7 @@ class Value(Parameter):
         self._parse_relationships(relationships)
 
 
-Mapping = frozendict[str, Parameter]
+Mapping: TypeAlias = frozendict[str, Parameter]
 
 
 def create_mapping(**params: Parameter) -> Mapping:

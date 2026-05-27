@@ -1,4 +1,4 @@
-from classic.db_tools import Engine, Entity, mapping
+from classic.db_tools import Engine, Entity
 
 from .dto import Task
 

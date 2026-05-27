@@ -11,11 +11,11 @@ TRANSACTION_STATUS_IDLE = psycopg2.extensions.TRANSACTION_STATUS_IDLE
 class Psycopg2Transaction(Transaction, driver=psycopg2):
 
     def _at_enter(self):
-        self.current.conn.rollback()
-        self.current.conn.autocommit = False
+        self._current.conn.rollback()
+        self._current.conn.autocommit = False
 
     def _at_exit(self):
-        self.current.conn.autocommit = True
+        self._current.conn.autocommit = True
 
 
 class Psycopg2ConnectionValidator(ConnectionValidator, driver=psycopg2):

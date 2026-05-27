@@ -1,5 +1,5 @@
 from types import TracebackType
-from typing import Optional, Type
+from typing import Optional, Type, cast
 
 from .scope import Scope
 from .pool import ConnectionPool
@@ -8,18 +8,20 @@ from .types import Connection
 
 class ConnectionScope:
     _conn_pool: ConnectionPool
-    current: Scope
+    _current: Scope
 
     def __init__(self, conn_pool: ConnectionPool, scope: Scope):
         super().__init__()
         self._conn_pool = conn_pool
-        self.current = scope
+        self._current = scope
+        self._first = None
 
     def __enter__(self) -> Connection:
-        if self.current.depth == 0:
-            self.current.conn = self._conn_pool.getconn()
-        self.current.depth += 1
-        return self.current.conn
+        if self._current.conn is None:
+            self._current.conn = self._conn_pool.acquire()
+            self._first = True
+
+        return cast(Connection, self._current.conn)
 
     def __exit__(
             self,
@@ -27,10 +29,10 @@ class ConnectionScope:
             value: Optional[BaseException],
             traceback: Optional[TracebackType],
     ) -> Optional[bool]:
-        self.current.depth -= 1
-        if self.current.depth != 0:
-            return False
-
-        self._conn_pool.release(self.current.conn)
-        self.current.conn = None
+        if self._first is True:
+            try:
+                self._conn_pool.release(self._current.conn)
+            finally:
+                self._first = None
+                self._current.conn = None
         return False

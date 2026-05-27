@@ -13,18 +13,23 @@
 # limitations under the License.
 
 from types import ModuleType
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 import threading
 import queue
 import logging
 
-from . import exceptions
 from .conn_validator import ConnectionValidator
 
 
 logger = logging.getLogger(__name__)
 
 ConnType = Any
+
+
+class ConnectionLimitError(Exception):
+    """
+    The connection pool has run out of available connections
+    """
 
 
 class ConnectionPool:
@@ -47,12 +52,16 @@ class ConnectionPool:
     # that it is still alive
     validate: Optional[Callable[[ConnType], bool]]
 
+    reached_limit: bool
+    connections_created: int
+    max_validation_retries: int
+
     # Maintain the pool in a queue for thread/process safety
     queue_class = queue.Queue
     lock_class = threading.Lock
 
     # How long to wait for a connection to become available
-    timeout: float = 5.0
+    timeout: float
 
     _pool: queue.Queue
 
@@ -62,7 +71,7 @@ class ConnectionPool:
         connection_factory,
         timeout: float = 5.0,
         limit: int = 0,
-        validator: ConnectionValidator = 'auto',
+        validator: Union[ConnectionValidator, str] = 'auto',
     ):
         self._pool = self.queue_class()
         self.driver = driver
@@ -87,7 +96,20 @@ class ConnectionPool:
         self.reached_limit = False
         self.timeout = timeout
 
-    def _getconn(self):
+    def acquire(self) -> ConnType:
+        if not self.validate:
+            return self._acquire()
+        for _ in range(self.max_validation_retries):
+            conn = self._acquire()
+            if self.validate(conn):
+                return conn
+            self.release(conn)
+        raise Exception(
+            f"Could not validate a connection after "
+            f"{self.max_validation_retries} attempts"
+        )
+
+    def _acquire(self):
         """
         Return a connection from the pool.
         """
@@ -100,24 +122,11 @@ class ConnectionPool:
             if self.limit:
                 with self.lock:
                     if self.reached_limit:
-                        raise exceptions.ConnectionLimitError()
+                        raise ConnectionLimitError()
                     else:
                         return self._connect()
             else:
                 return self._connect()
-
-    def getconn(self) -> ConnType:
-        if not self.validate:
-            return self._getconn()
-        for retry in range(self.max_validation_retries):
-            conn = self._getconn()
-            if self.validate(conn):
-                return conn
-            self.release(conn)
-        raise Exception(
-            f"Could not validate a connection after "
-            f"{self.max_validation_retries} attempts"
-        )
 
     def connect(self) -> 'ContextManagerWrappedConnection':
         """
@@ -129,7 +138,7 @@ class ConnectionPool:
     def _connect(self) -> ConnType:
         conn = self.connection_factory()  # type: ignore
         self.connections_created += 1
-        self.reached_limit = (
+        self.reached_limit = bool(
             self.limit and self.connections_created >= self.limit
         )
         return conn
@@ -141,10 +150,9 @@ class ConnectionPool:
         else:
             conn.close()
             if self.limit:
-                self.lock.acquire()
-                self.connections_created -= 1
-                self.reached_limit = self.connections_created >= self.limit
-                self.lock.release()
+                with self.lock:
+                    self.connections_created -= 1
+                    self.reached_limit = self.connections_created >= self.limit
 
 
 class ContextManagerWrappedConnection:
@@ -156,7 +164,7 @@ class ContextManagerWrappedConnection:
         self.pool = pool
 
     def __enter__(self) -> ConnType:
-        self.conn = self.pool.getconn()
+        self.conn = self.pool.acquire()
         return self.conn
 
     def __exit__(self, exc_type, exc_value, tb) -> bool:

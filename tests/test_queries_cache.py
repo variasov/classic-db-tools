@@ -16,13 +16,13 @@ def test_queries_cache(engine: Engine):
         lazy_query.__call__ = Mock(return_value=execute)
         cursor = Mock(Cursor)
 
-        query._lazy_query = lazy_query
+        query._tmpl_factory = lazy_query
         query.execute({}, cursor=cursor)
         query.execute({}, cursor=cursor)
 
         lazy_query.assert_has_calls([
             call(),
-            call().execute({}, cursor),
+            call().execute(cursor, {}),
             call(),
-            call().execute({}, cursor),
+            call().execute(cursor, {}),
         ])

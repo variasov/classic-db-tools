@@ -9,27 +9,35 @@
 pip install classic-db-tools
 ```
 
-## Quickstart:
-
 ```python
-from classic.db_tools import Engine, ConnectionPool
+from classic.db_tools import Engine
 import psycopg
 
-pool = ConnectionPool(psycopg.connect)
-engine = Engine('path/to/sql/templates/dir', pool)
+# Создание движка с драйвером БД
+engine = Engine(
+    psycopg,
+    lambda: psycopg.connect(
+        host='localhost',
+        port='5432',
+        dbname='tasks',
+        user='test',
+        password='test'
+    ),
+    templates_dirs='path/to/sql/templates/dir'
+)
 
-# При входе движок займет соединение в пуле,
+# При входе в контекст движок займет соединение в пуле,
 # на выходе, по дефолту, закоммитит
-with engine:
+with engine.transaction():
     # Создание схемы:
     engine.query_from('tasks/ddl.sql').execute()
-
+    
     # Сохранение данных
     engine.query_from('tasks/save.sql').executemany([
         {'title': 'Some Task', 'body': 'Do something'},
         {'title': 'Another Task', 'body': 'Do anything'},
     ])
-
+    
     # Получение данных
     task = engine.query_from('tasks/get_by_id.sql').one(id=1)
     # (1, 'Some Task', 'Do something')
@@ -59,37 +67,144 @@ INSERT INTO tasks (title, body) VALUES (%(title)s, %(body)s);
 
 
 ## Управление подключениями и транзакциями
-Библиотека рассчитана на 2 способа управления подключениями, внешний, 
-по отношению к библиотеке, и внутренний.
+Библиотека рассчитана на 2 способа управления подключениями: внешний и внутренний.
 
-Внешний - это когда библиотека не управляет подключениями напрямую,
-а управление происходит снаружи, вручную, или во внешнем фреймворке.
-В этом случае следует создавать курсор вручную, и передавать в методы Engine,
-в свойство _cursor:
+### Внешнее управление подключениями
+Когда библиотека не управляет подключениями напрямую, а управление происходит снаружи
+(вручную или во внешнем фреймворке). В этом случае следует создавать курсор вручную
+и передавать его в методы Engine через параметр `_cursor`:
 ```python
 cursor = some_connection.cursor()
 engine.query('SELECT 1').scalar(_cursor=cursor)
 ```
 
-Название свойства, начинающееся с _, может немного смутить, но, на самом деле,
-_ не означает приватность, он добавлен для того,
-чтобы уменьшить вероятность пересечения с названием свойства из запроса.
+Префикс `_` не означает приватность; он добавлен для снижения вероятности пересечения
+с названиями параметров из SQL-запроса.
 
-Второй способ, "Внутренний" - это когда объект Engine управляет подключениями
-самостоятельно. Engine является менеджером контекста. При входе контекст Engine
-возьмет подключение из пула, запомнит его для текущего потока (thread-local),
-при выходе, по умолчанию, произведет .commit у подключения, затем вернет его в 
-пул. Либо, в случае ошибок внутри контекста, произведет .rollback при выходе.
-Пример:
+### Внутреннее управление подключениями
+Когда объект Engine управляет подключениями самостоятельно. Engine предоставляет
+два менеджера контекста:
+
+#### Транзакции (engine.transaction())
+Основной способ управления транзакциями. При входе берется соединение из пула,
+при выходе по умолчанию производится `.commit()`, в случае ошибок — `.rollback()`.
 ```python
-with engine:
+with engine.transaction():
+    engine.query('INSERT INTO ...').execute(id=1, value=1)
+    engine.query('SELECT * FROM ...').all()
+```
+
+Поведение при ошибках можно изменить параметром `commit`:
+```python
+with engine.transaction(commit=False):
+    # При выходе будет rollback независимо от ошибок
     engine.query('SELECT 1').scalar()
 ```
 
-Поведение при ошибках в контексте можно изменить,
-задав параметр конструктора Engine commit_on_exit=False:
+#### Соединения без транзакций (engine.conn())
+Для случаев, когда не требуется управление транзакциями (например, с autocommit режимом).
+При выходе соединение просто возвращается в пул без commit/rollback:
 ```python
-engine = Engine('./queries', some_pool, commit_on_exit=False)
+with engine.conn():
+    engine.query('SELECT 1').scalar()
+```
+
+
+## Инициализация Engine
+
+Engine принимает следующие параметры:
+
+```python
+from classic.db_tools import Engine, backends
+import psycopg
+
+engine = Engine(
+    # Драйвер БД (обязательный параметр)
+    driver=psycopg,
+    
+    # Фабрика подключений (опциональный параметр)
+    factory=lambda: psycopg.connect(...),
+    
+    # Класс пула подключений (опциональный параметр)
+    pool_class=ConnectionPool,
+    
+    # Параметры для инициализации пула (опциональный параметр)
+    pool_kwargs={
+        'limit': 10,           # Максимальное количество подключений (0 - без лимита)
+        'timeout': 5.0,        # Таймаут ожидания доступного подключения
+        'validator': 'auto',   # Валидатор подключений ('auto' или экземпляр ConnectionValidator)
+    },
+    
+    # Директории с SQL-шаблонами
+    templates_dirs=['path/to/sql', 'other/sql'],
+    
+    # Дефолтный маппер для результатов
+    default_mapping={
+        'task': Entity(Task, 'id'),
+        'status': Value(Status),
+    },
+    
+    # Логгер
+    logger=logging.getLogger('my-logger'),
+    
+    # Считать строковые запросы статическими по умолчанию
+    str_templates_static_by_default=False,
+    
+    # Символ для обрамления идентификаторов БД
+    identifier_quote_char='"',  # '"' для PostgreSQL, '`' для MySQL
+)
+```
+
+### Параметры ConnectionPool
+
+Пул подключений поддерживает следующие параметры через `pool_kwargs`:
+
+- **limit** (int, default=0): Максимальное количество одновременных подключений.
+  0 означает без ограничений.
+
+- **timeout** (float, default=5.0): Время ожидания в секундах до выброса `ConnectionLimitError`
+  если нет свободного подключения.
+
+- **validator** (str or ConnectionValidator, default='auto'): Валидатор подключений.
+  'auto' автоматически выбирает валидатор для драйвера.
+  Поддерживаемые драйверы: psycopg, psycopg2, pymysql, mysqldb, pymssql, oracledb, cx_oracle.
+
+
+## Поддерживаемые драйверы БД
+
+Classic DB Tools поддерживает следующие драйверы:
+
+| Драйвер | Модуль | Установка |
+|---------|--------|-----------|
+| PostgreSQL (новый) | `psycopg` | `pip install psycopg[binary]` |
+| PostgreSQL (старый) | `psycopg2` | `pip install psycopg2-binary` |
+| MySQL | `pymysql` | `pip install pymysql` |
+| MySQL (С расширениями) | `mysqldb` | `pip install mysqlclient` |
+| MS SQL Server | `pymssql` | `pip install pymssql` |
+| Oracle (новый) | `oracledb` | `pip install oracledb` |
+| Oracle (старый) | `cx_oracle` | `pip install cx_Oracle` |
+
+Для каждого драйвера есть встроенный валидатор подключений и обработчик транзакций.
+При использовании неизвестного драйвера валидация отключается (параметр `validator=None`).
+
+Пример для различных драйверов:
+```python
+import psycopg
+import pymysql
+
+# PostgreSQL с psycopg
+pg_engine = Engine(
+    psycopg,
+    lambda: psycopg.connect(host='localhost', dbname='mydb'),
+    templates_dirs='sql',
+)
+
+# MySQL с pymysql
+mysql_engine = Engine(
+    pymysql,
+    lambda: pymysql.connect(host='localhost', user='root', database='mydb'),
+    templates_dirs='sql',
+)
 ```
 
 
@@ -220,11 +335,12 @@ SELECT * FROM `public`.`some_table`
 ## Выдача значений
 Объект Query предоставляет несколько способов вернуть результаты запроса.
 По дефолту запрос возвращает наружу то, что возвращает драйвер.
-Для изменения типа можно обратиться к документации драйвера,
-а можно использовать маппинг. Подробно маппинг описывается ниже.
+Для изменения типа можно использовать маппинг (см. раздел о маппинге).
 
-Метод .all() вернет список всех значений результатов. Реализация использует
-метод .fetchall() у курсора. Например:
+### Методы получения результатов
+
+#### .all()
+Возвращает список всех значений результатов, используя `.fetchall()`:
 ```python   
 for row in engine.query(
     'SELECT * FROM some_table'
@@ -232,110 +348,236 @@ for row in engine.query(
     print(row)
 ```
 
-Метод .iter вернет итератор по батчам. Реализация вызывает .fetchmany() 
-у курсора, буферизует результат, и выдает наружу записи по одной. Размер батча
-можно задать параметром _batch:
+#### .iter()
+Возвращает итератор по результатам, буферизуя их батчами.
+Использует `.fetchmany()` для эффективной работы с большими наборами данных.
+Размер батча задается параметром `batch` (по умолчанию 500):
 ```python
 for row in engine.query(
-        'SELECT * FROM some_table'
+    'SELECT * FROM some_table'
 ).iter(batch=100):
     print(row)
 ```
 
-Метод .one() вернет одно (первое) значение или None. Реализация использует
-метод .fetchone() у курсора. Например:
+#### .one()
+Возвращает первое значение или None, используя `.fetchone()`:
 ```python
 row = engine.query(
     'SELECT * FROM some_table ' 
-    'WHERE id = %(id)s').one(id=id)
+    'WHERE id = %(id)s'
+).one(id=1)
 print(row)
 ```
 
-Метод .scalar() вернет одно (первое) значение или None. Реализация использует
-метод .fetchone() у курсора. Например:
+#### .scalar()
+Возвращает первое значение первого столбца или None.
+Удобен для запросов вроде `SELECT COUNT(*)`:
 ```python
 name = engine.query(
     'SELECT name FROM some_table '
     'WHERE id = %(id)s'
-).scalar(id=id)
+).scalar(id=1)
 print(name)
 ```
 
-Также есть метод .rowcount(), возвращающий количество обработанных строк 
-из курсора. Реализация не получает результаты. Например:
+#### .rowcount()
+Возвращает количество обработанных строк из курсора.
+Удобен для логгирования операций INSERT/UPDATE/DELETE:
 ```python
 rowcount = engine.query(
     'DELETE FROM some_table'
 ).rowcount()
-print(rowcount)
+print(f'Удалено {rowcount} строк')
 ```
-Этот метод удобен для логгирования работы приложения.
 
-Для случая, когда результаты запроса не важны, либо требуется работа с курсором
-вручную, есть метод .execute(). Он возвращает курсор после выполнения запроса:
+#### .execute()
+Возвращает курсор после выполнения запроса.
+Полезен когда требуется работа с курсором вручную:
 ```python
 cursor = engine.query('SELECT * FROM some_table').execute()
+# работа с курсором напрямую
 ```
 
-Также есть метод .executemany() для множественного исполнения:
+#### .executemany()
+Для множественного исполнения запроса (пакетные операции):
 ```python
 engine.query(
-    'INSERT INTO some_table(id, value)'
-    'VALUES (%(id)s, %(value)s)'
+    'INSERT INTO some_table(id, value) VALUES (%(id)s, %(value)s)'
 ).executemany([
-    dict(id=1, value=1),
-    dict(id=2, value=2),
+    {'id': 1, 'value': 'a'},
+    {'id': 2, 'value': 'b'},
 ])
 ```
 
-Есть разница в поведении метода со статическими и динамическими запросами.
+Поведение отличается для статических и динамических запросов:
+- **Статический**: использует `.executemany()` драйвера один раз со всеми параметрами (быстро)
+- **Динамический**: собирает и выполняет запрос для каждого набора параметров (медленнее)
 
-При статическом запросе произойдет вызов .executemany() у курсора, куда будет
-передан запрос "как есть", и набор переданных параметров.
+### Передача параметров
 
-При динамическом запросе для каждого юнита в наборе переданных параметров
-произойдет сборка запроса, выполнение и ожидание результата, потому этот метод 
-может работать медленно.
+Все методы принимают параметры одинаково. Есть несколько способов:
 
-Все методы, кроме .executemany(), принимают аргументы по одному и 
-тому же принципу.
-
-В случае, когда ваша программа работает с набором данных в виде словарей,
-удобно передавать словари в запрос в виде неименованного аргумента:
-```python
-some_obj = dict(id=1, value=1)
-engine.query(
-    'INSERT INTO some_table(id, value)'
-    'VALUES (%(id)s, %(value)s)'
-).execute(some_obj)
-```
-Также можно переопределить какое-либо значение:
-```python
-some_obj = dict(id=1, value=1)
-engine.query(
-    'INSERT INTO some_table(id, value)'
-    'VALUES (%(id)s, %(value)s)'
-).execute(some_obj, value=2)  # Вставится 1, 2
-```
-
-Для случая, когда набор параметров задается статично или из разных источников,
-удобнее использовать **kwargs:
+#### По ключевым аргументам:
 ```python
 engine.query(
-    'INSERT INTO some_table(id, value)'
-    'VALUES (%(id)s, %(value)s)'
+    'INSERT INTO some_table(id, value) VALUES (%(id)s, %(value)s)'
 ).execute(id=1, value=1)
 ```
 
-Также каждому методу (включая .executemany()) можно переопределить курсор, 
-отвязав исполнение от Engine для случаев, 
-когда необходимо управлять подключениями самостоятельно:
+#### Через словарь:
 ```python
-cursor = conn.cursor()
+some_obj = {'id': 1, 'value': 1}
 engine.query(
-    'INSERT INTO some_table(id, value)'
-    'VALUES (%(id)s, %(value)s)'
-).execute(id=1, value=1, _cursor=cursor)
+    'INSERT INTO some_table(id, value) VALUES (%(id)s, %(value)s)'
+).execute(some_obj)
+```
+
+#### Объединение словаря и ключевых аргументов:
+```python
+some_obj = {'id': 1, 'value': 1}
+engine.query(
+    'INSERT INTO some_table(id, value) VALUES (%(id)s, %(value)s)'
+).execute(some_obj, value=2)  # value=2 переопределит значение из словаря
+```
+
+### Использование с внешним курсором
+
+Каждому методу можно передать внешний курсор параметром `cursor`,
+отвязав исполнение от управления подключениями Engine:
+```python
+cursor = my_connection.cursor()
+engine.query(
+    'INSERT INTO some_table(id, value) VALUES (%(id)s, %(value)s)'
+).execute(id=1, value=1, cursor=cursor)
+```
+
+
+## Логирование и отладка
+
+Engine поддерживает логирование через стандартный модуль `logging`:
+
+```python
+import logging
+
+# Включить логирование на уровне DEBUG для видимости всех операций
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('classic-db-tools')
+
+engine = Engine(
+    psycopg,
+    lambda: psycopg.connect(...),
+    templates_dirs='sql',
+    logger=logger,  # Передать логгер в Engine
+)
+
+# Теперь все операции будут залогированы
+with engine.transaction():
+    engine.query('SELECT 1').scalar()
+```
+
+Библиотека логирует следующие события:
+- Загрузку шаблонов из файлов
+- Ошибки валидации подключений
+- Проблемы с пулом подключений
+
+### Получение скомпилированного запроса
+
+Для отладки динамических запросов можно получить сгенерированный SQL через метод `.sources()`:
+
+```python
+query = engine.query(
+    'SELECT * FROM tasks WHERE status = {{ status }}'
+).map_to(Task)
+
+# Получить текст скомпилированной функции для отладки
+print(query.sources())
+```
+
+
+## Динамические фильтры (Criteria)
+
+Для удобного создания сложных WHERE-условий библиотека интегрирована с 
+[classic-criteria](https://pypi.org/project/classic-criteria/). Это опциональная 
+зависимость, которая позволяет строить фильтры программно.
+
+Сначала установите пакет:
+```shell
+pip install classic-db-tools[criteria]
+```
+
+Затем используйте `traverse` и `contains` макросы в Jinja шаблонах:
+
+```python
+from classic.criteria import And, Eq, Gt
+
+# Создать критерии в Python
+criteria = And(
+    Eq('status', 'active'),
+    Gt('created_at', '2024-01-01')
+)
+
+# Использовать в запросе
+tasks = engine.query('''
+    SELECT * FROM tasks
+    {% if filters and contains(filters, 'Eq', 'Gt') %}
+    WHERE {{ traverse(filters, translators) }}
+    {% endif %}
+''').all(filters=criteria, translators=my_translators)
+```
+
+Функция `traverse` преобразует объекты criteria в SQL WHERE-условие,
+функция `contains` проверяет наличие определённых типов фильтров.
+
+
+## Обработка ошибок
+
+### ConnectionLimitError
+Выбрасывается когда пул подключений исчерпан и превышен таймаут ожидания свободного подключения:
+
+```python
+from classic.db_tools import ConnectionPool
+from classic.db_tools.pool import ConnectionLimitError
+
+pool = ConnectionPool(
+    psycopg,
+    lambda: psycopg.connect(...),
+    limit=5,           # Максимум 5 одновременных подключений
+    timeout=2.0        # Ждать 2 секунды, затем ошибка
+)
+
+try:
+    engine = Engine(psycopg, pool_class=lambda *a, **kw: pool)
+    with engine.transaction():
+        # Если все 5 подключений заняты и новое не появилось за 2 сек
+        engine.query('SELECT 1').scalar()
+except ConnectionLimitError:
+    print('Пул подключений полон, подождите и повторите')
+```
+
+### Ошибки валидации подключений
+Если подключение потеряно или неисправно, валидатор подключения пытается восстановить его.
+После нескольких неудачных попыток валидации происходит переподключение:
+
+```python
+# Валидатор автоматически проверяет подключение при получении из пула
+# Если проверка не пройдена, подключение отбрасывается и создается новое
+engine = Engine(
+    psycopg,
+    lambda: psycopg.connect(...),
+    pool_kwargs={'validator': 'auto'},  # Автоматический валидатор для драйвера
+)
+```
+
+### Ошибки шаблонов Jinja
+При ошибках в синтаксисе Jinja шаблона будет выброшено исключение `jinja2.TemplateError`:
+
+```python
+try:
+    # Синтаксическая ошибка в шаблоне
+    query = engine.query('SELECT * FROM {{ invalid | unknown_filter }}')
+    query.scalar()
+except Exception as e:
+    print(f'Ошибка шаблона: {e}')
 ```
 
 
@@ -380,26 +622,25 @@ FROM some_table;
 в каком регистре писать префиксы и поля.
 Библиотека внутри все имена переведет в нижний регистр.
 
-Затем нужно объявить маппинг и сделать запрос::
+Затем нужно объявить маппинг и сделать запрос:
 ```python
 from classic.db_tools import Engine, Entity
+import psycopg
 
 mapping = dict(
-    someobj=Entity(Task, 'id'),
+    task=Entity(Task, 'id'),
 )
 
 engine = Engine(
-    some_con_pool,
-    templates_dirs='some/sql/dir',
+    psycopg,
+    lambda: psycopg.connect(host='localhost', dbname='mydb'),
+    templates_dirs='sql',
     default_mapping=mapping,
 )
 
-with engine:
-    task = engine.query_from(
-        'example_select.sql',
-    ).map_to(Task).one(id=1)
-
-print(task)
+with engine.transaction():
+    task = engine.query_from('example_select.sql').map_to(Task).one(id=1)
+    print(task)
 ```
 
 Названия полей маппера, подаваемые в словарь mapping, должны соответствовать
@@ -508,10 +749,10 @@ mapping = dict(
     status=Value(Status)
 )
 
-pool = ConnectionPool(...)
-engine = Engine(pool, default_mapping=mapping)
+pool = ConnectionPool(psycopg, lambda: psycopg.connect(...))
+engine = Engine(psycopg, default_mapping=mapping)
 
-with engine:
+with engine.transaction():
     tasks = engine.query('''
     SELECT
         tasks.id AS task__id,
@@ -540,8 +781,8 @@ Assign используется для присвоения объекта ук�
 Пример:
 ```python
 from dataclasses import dataclass
-
 from classic.db_tools import Engine, Entity, Value, Assign
+import psycopg
 
 
 @dataclass
@@ -561,10 +802,9 @@ mapping = dict(
     status=Value(Status)
 )
 
-pool = ConnectionPool(...)
-engine = Engine(pool, default_mapping=mapping)
+engine = Engine(psycopg, lambda: psycopg.connect(...), default_mapping=mapping)
 
-with engine:
+with engine.transaction():
     tasks = engine.query('''
     SELECT
         tasks.id AS task__id,
@@ -606,3 +846,126 @@ mapper = dict(
 
 Для облегчения отладки объект запроса с назначенным маппером имеет метод 
 .sources(), возвращающий текст скомпилированный функции.
+
+## Лучшие практики и рекомендации
+
+### 1. Используйте статические запросы когда возможно
+Статические запросы (`.sql` файлы) выполняются быстрее, так как не требуют
+обработки Jinja шаблона:
+
+```python
+# ✅ Хорошо - статический запрос
+engine.query_from('simple_select.sql').all()
+
+# ⚠️ Медленнее - динамический запрос
+engine.query_from('complex_template.sql.tmpl').all()
+```
+
+### 2. Кешируйте мапперы
+Мапперы компилируются и кешируются. При использовании одинаковых маппинга
+для разных запросов, рекомендуется передавать его в конструктор Engine
+как `default_mapping`:
+
+```python
+# ✅ Хорошо - маппер в конструкторе, переиспользуется
+engine = Engine(
+    psycopg,
+    factory,
+    default_mapping={'task': Entity(Task, 'id')},
+)
+
+tasks = engine.query_from('get_tasks.sql').map_to(Task).all()
+```
+
+### 3. Управляйте пулом подключений правильно
+- Установите подходящий `limit` - слишком большой лимит пустит ресурсы впустую,
+  слишком малый вызовет `ConnectionLimitError`
+- Используйте `validator='auto'` для автоматической валидации подключений
+- Настройте `timeout` в зависимости от нагрузки системы
+
+```python
+pool_kwargs = {
+    'limit': 10,          # Для типичной веб-апликации
+    'timeout': 5.0,       # 5 секунд для ожидания соединения
+    'validator': 'auto',  # Валидируем каждое подключение
+}
+```
+
+### 4. Используйте транзакции для групп операций
+Группируйте связанные операции в одну транзакцию для обеспечения консистентности:
+
+```python
+# ✅ Хорошо - атомарная операция
+with engine.transaction():
+    task = engine.query_from('create_task.sql').execute(title='New Task')
+    engine.query_from('assign_to_user.sql').execute(task_id=task.id, user_id=user_id)
+    # Коммитится только если обе операции успешны
+```
+
+### 5. Логируйте операции
+Всегда передавайте логгер для отладки и мониторинга:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+engine = Engine(
+    psycopg,
+    factory,
+    logger=logger,
+)
+```
+
+### 6. Используйте параметризованные запросы
+Никогда не подставляйте значения напрямую в SQL строку:
+
+```python
+# ❌ Небезопасно - уязвимо к SQL инъекциям
+engine.query(f'SELECT * FROM users WHERE name = {name}').all()
+
+# ✅ Безопасно - параметризованный запрос
+engine.query('SELECT * FROM users WHERE name = %(name)s').all(name=name)
+```
+
+### 7. Отделите маппирование результатов от логики
+Используйте маппинг на уровне запроса, а не в обработчике результатов:
+
+```python
+# ✅ Хорошо - маппинг в запросе
+tasks = engine.query_from('get_tasks.sql').map_to(Task).all()
+for task in tasks:
+    print(task.title)  # task - это объект Task
+```
+
+
+## Производительность
+
+### Кеширование
+- Шаблоны SQL кешируются после первой загрузки из файла
+- Мапперы компилируются и кешируются на основе маппинга и структуры результата
+- Для сброса кеша пересоздайте объект Engine
+
+### Батчирование
+Для больших наборов данных используйте `.iter()` вместо `.all()`:
+
+```python
+# ✅ Эффективно для больших наборов
+for row in engine.query('SELECT * FROM large_table').iter(batch=1000):
+    process(row)
+
+# ❌ Может привести к нехватке памяти
+rows = engine.query('SELECT * FROM large_table').all()
+for row in rows:
+    process(row)
+```
+
+### Статические vs Динамические запросы
+Сложность обработки:
+- **Статические**: O(1) - просто передаются драйверу
+- **Динамические**: O(n) - требуют обработки Jinja шаблона и подстановки параметров
+
+
+## Лицензия
+Проект распространяется под лицензией Apache License 2.0. 
+Некоторые части кода (ConnectionPool, validators) взяты из других проектов 
+с соответствующими лицензиями.

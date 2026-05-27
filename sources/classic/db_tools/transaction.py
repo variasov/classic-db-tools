@@ -1,13 +1,16 @@
 from types import TracebackType, ModuleType
-from typing import Any, Optional, Type, ClassVar, Dict
+from typing import Any, Optional, Type, ClassVar, Dict, cast
 
 from .pool import ConnectionPool
 from .conn_scope import ConnectionScope
 from .scope import Scope
+from .types import Connection
 
 
 class Transaction:
-    implementations: ClassVar[Dict[ModuleType, Type['Transaction']]] = {}
+    implementations: ClassVar[
+        Dict[ModuleType, Type['Transaction']]
+    ] = {}
 
     def __init_subclass__(cls, driver: ModuleType, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -18,43 +21,54 @@ class Transaction:
             conn_pool: ConnectionPool,
             current: Scope,
             commit: bool = True,
-            **kwargs,
+            params: Optional[Dict[str, Any]] = None,
     ):
         super().__init__()
         self._conn_pool = conn_pool
         self._commit_on_exit = commit
-        self.conn_scope = None
-        self.current = current
-        self.params = kwargs
+        self._conn_scope = None
+        self._current = current
+        self._params = params or {}
+        self._first = None
 
-    def _at_enter(self, **kwargs: Any):
-        raise NotImplemented
+    def _enable_params(self):
+        raise NotImplementedError
 
-    def _at_exit(self):
-        raise NotImplemented
+    def _restore_params(self):
+        raise NotImplementedError
+
+    def _start_savepoint(self):
+        raise NotImplementedError
+
+    def _release_savepoint(self):
+        raise NotImplementedError
 
     def __enter__(self):
-        if self.current.tx_depth == 0:
-            if self.current.conn is None:
-                self.conn_scope = ConnectionScope(
-                    self._conn_pool, self.current,
-                )
-                self.conn_scope.__enter__()
+        if self._current.conn is None:
+            self._conn_scope = ConnectionScope(
+                self._conn_pool, self._current,
+            )
+            self._conn_scope.__enter__()
 
         try:
-            if self.current.tx_depth == 0:
-                self._at_enter()
-                self.current.tx = self
-                self.current.tx_depth += 1
+            if self._current.tx_params is None:
+                self._current.tx_params = self._params
+                self._first = True
+                self._enable_params()
             else:
-                assert self.current.tx.params == self.params, (
+                assert self._current.tx_params == self._params, (
                     'Transaction params do not match'
                 )
+                self._first = False
+                self._start_savepoint()
         except Exception as exc:
-            self.current.tx = None
-            self.current.tx_depth = 0
-            if self.conn_scope:
-                self.conn_scope.__exit__(exc.__class__, exc, None)
+            if self._first:
+                self._current.tx_params = None
+                self._first = None
+
+            if self._conn_scope:
+                self._conn_scope.__exit__(exc.__class__, exc, None)
+                self._conn_scope = None
             raise exc
 
     def __exit__(
@@ -63,19 +77,25 @@ class Transaction:
             value: Optional[BaseException],
             traceback: Optional[TracebackType],
     ) -> Optional[bool]:
-        self.current.tx_depth -= 1
-        if self.current.tx_depth != 0:
-            return False
-
         try:
-            if type_ is None and self._commit_on_exit:
-                self.current.conn.commit()
+            conn = cast(Connection, self._current.conn)
+            if type_ is None:
+                if self._first:
+                    if self._commit_on_exit:
+                        conn.commit()
+                    else:
+                        conn.rollback()
+                else:
+                    self._release_savepoint()
             else:
-                self.current.conn.rollback()
-
-            self._at_exit()
+                conn.rollback()
+            self._restore_params()
         finally:
-            if self.conn_scope:
-                self.conn_scope.__exit__(type_, value, traceback)
+            if self._first:
+                self._first = None
+                self._current.tx_params = None
+
+            if self._conn_scope:
+                self._conn_scope.__exit__(type_, value, traceback)
 
             return False
