@@ -72,14 +72,11 @@ INSERT INTO tasks (title, body) VALUES (%(title)s, %(body)s);
 ### Внешнее управление подключениями
 Когда библиотека не управляет подключениями напрямую, а управление происходит снаружи
 (вручную или во внешнем фреймворке). В этом случае следует создавать курсор вручную
-и передавать его в методы Engine через параметр `_cursor`:
+и передавать его в методы Engine через параметр `cursor`:
 ```python
 cursor = some_connection.cursor()
-engine.query('SELECT 1').scalar(_cursor=cursor)
+engine.query('SELECT 1').scalar(cursor=cursor)
 ```
-
-Префикс `_` не означает приватность; он добавлен для снижения вероятности пересечения
-с названиями параметров из SQL-запроса.
 
 ### Внутреннее управление подключениями
 Когда объект Engine управляет подключениями самостоятельно. Engine предоставляет
@@ -104,8 +101,17 @@ with engine.transaction(commit=False):
 #### Соединения без транзакций (engine.conn())
 Для случаев, когда не требуется управление транзакциями (например, с autocommit режимом).
 При выходе соединение просто возвращается в пул без commit/rollback:
+
+Как контекстный менеджер:
 ```python
 with engine.conn():
+    engine.query('SELECT 1').scalar()
+```
+
+Как декоратор:
+```python
+@engine.conn()
+def some_method():
     engine.query('SELECT 1').scalar()
 ```
 
@@ -380,6 +386,13 @@ name = engine.query(
 print(name)
 ```
 
+При `raising=True` выбросит `IndexError` вместо возврата None, когда результат пуст:
+```python
+name = engine.query(
+    'SELECT name FROM some_table WHERE id = %(id)s'
+).scalar(id=999, raising=True)  # IndexError если строк нет
+```
+
 #### .rowcount()
 Возвращает количество обработанных строк из курсора.
 Удобен для логгирования операций INSERT/UPDATE/DELETE:
@@ -388,6 +401,17 @@ rowcount = engine.query(
     'DELETE FROM some_table'
 ).rowcount()
 print(f'Удалено {rowcount} строк')
+```
+
+#### .scalars()
+Возвращает итератор по значениям первого столбца каждой строки.
+Удобен для получения списка значений из одного столбца.
+Размер батча задается параметром `batch` (по умолчанию 500):
+```python
+for name in engine.query(
+    'SELECT name FROM some_table'
+).scalars(batch=100):
+    print(name)
 ```
 
 #### .execute()
@@ -406,6 +430,22 @@ engine.query(
 ).executemany([
     {'id': 1, 'value': 'a'},
     {'id': 2, 'value': 'b'},
+])
+```
+
+Также можно передавать объекты с `__dict__` — они будут преобразованы в словари:
+```python
+from dataclasses import dataclass
+
+@dataclass
+class TaskData:
+    title: str
+    body: str
+
+engine.query('INSERT INTO tasks (title, body) VALUES (%(title)s, %(body)s)'
+).executemany([
+    TaskData(title='Task 1', body='Do something'),
+    TaskData(title='Task 2', body='Do anything'),
 ])
 ```
 
@@ -535,18 +575,19 @@ tasks = engine.query('''
 Выбрасывается когда пул подключений исчерпан и превышен таймаут ожидания свободного подключения:
 
 ```python
-from classic.db_tools import ConnectionPool
+from classic.db_tools import Engine, ConnectionPool
 from classic.db_tools.pool import ConnectionLimitError
 
-pool = ConnectionPool(
+engine = Engine(
     psycopg,
     lambda: psycopg.connect(...),
-    limit=5,           # Максимум 5 одновременных подключений
-    timeout=2.0        # Ждать 2 секунды, затем ошибка
+    pool_kwargs={
+        'limit': 5,      # Максимум 5 одновременных подключений
+        'timeout': 2.0,  # Ждать 2 секунды, затем ошибка
+    },
 )
 
 try:
-    engine = Engine(psycopg, pool_class=lambda *a, **kw: pool)
     with engine.transaction():
         # Если все 5 подключений заняты и новое не появилось за 2 сек
         engine.query('SELECT 1').scalar()
@@ -681,8 +722,8 @@ mapper = dict(
 
 ### map_to
 
-Метод map_to имеет 3 аргумента - result, prefix и mapper. Result и prefix 
-связаны друг с другом.
+Метод map_to имеет 3 группы аргументов - result, prefix и keyword-аргументы **params.
+Result и prefix связаны друг с другом.
 
 Если подается только result (желаемый класс), то в качестве префикса будет
 использоваться название класса, а класс в result будет использован 
@@ -708,10 +749,29 @@ obj = engine.query_from('test.sql').map_to('task').one()
 # obj - Any с точки зрения typing
 ```
 
+Третий вариант - передать маппинг через keyword-аргументы. В этом случае
+можно указать только префикс или класс:
+```python
+# Маппинг через kwargs
+engine.query(sql).map_to(
+    Task,
+    task=Entity(Task, 'id'),
+    status=Value(Status),
+).all()
+
+# Маппинг через kwargs с кастомным префиксом
+engine.query(sql).map_to(
+    Task, 'custom',
+    custom=Entity(Task, 'id'),
+).all()
+```
+
 Если не указать ни то, ни другое, маппер выкинет ошибку, так как он не понимает,
 объекты с каким префиксом он должен вернуть в ответ.
 
-Третий аргумент - маппер. Если подан, то будет использован вместо дефолтного.
+Если подан **params (keyword-аргументы), они будут использованы как конфигурация маппера
+вместо дефолтной. Третий аргумент - маппер (устаревший способ, используйте **params) -
+также поддерживается для обратной совместимости.
 
 Дефолтный маппер задается в конструкторе Engine.
 
