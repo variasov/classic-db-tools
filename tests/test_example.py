@@ -33,7 +33,7 @@ def test_iter(engine: Engine, tasks):
     )
     assert next(result) == (1, '1')
     with pytest.raises(StopIteration):
-        next(result)
+        print(next(result))
 
 
 def test_all(engine: Engine, tasks):

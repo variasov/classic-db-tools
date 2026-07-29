@@ -354,7 +354,7 @@ class Query:
 
     @staticmethod
     def _prepare(params: QueryParams, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        params_: Dict[str, Any] = kwargs
+        params_: Dict[str, Any] = params
         if params is None:
             params_ = kwargs
         elif not isinstance(params, (dict, tuple)):

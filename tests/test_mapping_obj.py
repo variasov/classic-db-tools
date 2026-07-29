@@ -3,7 +3,7 @@ from typing import Union
 
 import pytest
 
-from classic.db_tools import Engine, Entity, Append, Value
+from classic.db_tools import Assign, Engine, Entity, Append, Value
 
 from .dto import Task, Status, TaskGroup
 
@@ -157,7 +157,7 @@ def test_one_to_one(engine: Engine):
     ) AS data(AnotherObj__id, SomeObj__id, SomeObj__value)
     ''').map_to(
         AnotherObj,
-        AnotherObj=Entity(AnotherObj, 'id'),
+        AnotherObj=Entity(AnotherObj, 'id', some_obj=Assign('SomeObj')),
         SomeObj=Entity(SomeObj, 'id'),
     )
     assert query.all() == [

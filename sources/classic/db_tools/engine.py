@@ -101,6 +101,12 @@ class Engine:
 
         self._tx_cls = Transaction.implementations[self.driver]
 
+        self._logger = logger or logging.getLogger('classic-db-tools')
+
+        self._str_templates_static_by_default = str_templates_static_by_default
+
+        self._mapper = Mapper(frozendict(default_mapping or {}))
+
         if templates_dirs is None:
             self.templates_paths = []
         elif isinstance(templates_dirs, str):
@@ -126,11 +132,6 @@ class Engine:
             self._logger,
             templates_paths=self.templates_paths,
         )
-        self.str_templates_static_by_default = str_templates_static_by_default
-
-        self._mapper = Mapper(frozendict(default_mapping or {}))
-
-        self._logger = logger or logging.getLogger('classic-db-tools')
 
     def query_from(self, filename: str) -> Query:
         """
@@ -171,7 +172,7 @@ class Engine:
         или указывается прямо в Python-коде.
         """
         if static is None:
-            static = self.str_templates_static_by_default
+            static = self._str_templates_static_by_default
 
         if static is True:
             tmpl = self.static_templates.get_or_create

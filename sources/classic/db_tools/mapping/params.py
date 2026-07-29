@@ -65,12 +65,15 @@ class Parameter:
             annot = sign_param.annotation
             origin = get_origin(annot)
             args = get_args(annot)
-            if origin is None:
-                new_rels[name_] = Assign(annot.__name__.lower())
-            elif issubclass(origin, List):
-                new_rels[name_] = Append(args[0].__name__.lower())
-            elif issubclass(origin, Set):
-                new_rels[name_] = Add(args[0].__name__.lower())
+            try:
+                if origin is None:
+                    new_rels[name_] = Assign(annot.__name__.lower())
+                elif issubclass(origin, List):
+                    new_rels[name_] = Append(args[0].__name__.lower())
+                elif issubclass(origin, Set):
+                    new_rels[name_] = Add(args[0].__name__.lower())
+            except TypeError:
+                continue
 
         object.__setattr__(self, 'relationships', frozendict(new_rels))
 

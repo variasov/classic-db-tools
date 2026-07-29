@@ -15,11 +15,11 @@ mapper_sources = '''def mapper_func(rows):
             task = Task(id=row[0])
             task_map[task_id] = (task,)
         else:
-            task, = obj_with_rels
+            (task,) = obj_with_rels
         return (task, task_id)
     last_obj = None
     for row_ in rows:
-        obj, _ = map_task(row_)
+        (obj, _) = map_task(row_)
         if last_obj is not obj:
             if last_obj is not None:
                 yield last_obj
