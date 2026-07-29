@@ -5,6 +5,9 @@ from classic.db_tools.types import Cursor
 
 
 class Template(ABC):
+    """
+    Интерфейс SQL-шаблона.
+    """
 
     @abstractmethod
     def execute(

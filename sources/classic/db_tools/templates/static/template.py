@@ -7,6 +7,11 @@ from ..template import Template
 
 
 class StaticTemplate(Template):
+    """
+    Статический SQL-шаблон.
+
+    Используется под капотом Query и MapperQuery, снаружи недоступен.
+    """
 
     def __init__(
         self,
@@ -24,7 +29,7 @@ class StaticTemplate(Template):
             self.filepath = None
             self.content = content
         else:
-            raise NotImplemented
+            raise NotImplementedError
 
     def execute(
         self,

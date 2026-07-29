@@ -7,8 +7,16 @@ from .types import Connection
 
 
 class ConnectionScope:
+    """
+    Контекстный менеджер, обеспечивающий удержание коннекта из пула в scope
+    при входе в контекст, и возврат коннекта в пул при выходе из контекста.
+
+    Инстанцируется двжиком во время работы.
+    """
+
     _conn_pool: ConnectionPool
     _current: Scope
+    _first: Optional[bool]
 
     def __init__(self, conn_pool: ConnectionPool, scope: Scope):
         super().__init__()

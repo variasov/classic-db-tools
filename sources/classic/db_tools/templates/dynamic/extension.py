@@ -3,6 +3,10 @@ from jinja2.lexer import Token
 
 
 class AutoBind(Extension):
+    """
+    Расширение для Jinja, автоматически добавляющее
+    фильтр bind к каждой переменной в шаблоне.
+    """
 
     def extract_param_name(self, tokens):
         name = ''
@@ -22,9 +26,9 @@ class AutoBind(Extension):
     def filter_stream(self, stream):
         """
         We convert
-        {{ some.variable | filter1 | filter 2}}
+        {{ some.variable | filter1 | filter 2 }}
             to
-        {{ ( some.variable | filter1 | filter 2 ) | bind}}
+        {{ ( some.variable | filter1 | filter 2 ) | bind }}
 
         ... for all variable declarations in the template
 

@@ -17,6 +17,12 @@ from .template import DynamicTemplate
 
 
 class DynamicTemplatesCache:
+    """
+    Кеш со динамическими шаблонами.
+
+    Используется под капотом Engine, снаружи не доступен.
+    """
+
     VALID_ID_QUOTE_CHARS = ('"', '`', "'")
 
     def __init__(

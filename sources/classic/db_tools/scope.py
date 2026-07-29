@@ -5,6 +5,14 @@ from .types import Connection
 
 
 class Scope(threading.local):
+    """
+    Tread-local объект, содержащий соединение с БД
+    и параметры транзакции во время работы методов
+    Engine.conn и Engine.transaction.
+
+    Инстанцируется движком во время работы.
+    """
+
     conn: Connection | None
     tx_params: Dict[str, Any] | None
 

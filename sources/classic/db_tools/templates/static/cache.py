@@ -8,6 +8,11 @@ from .template import StaticTemplate
 
 
 class StaticTemplatesCache:
+    """
+    Кеш со статичными шаблонами.
+
+    Используется под капотом Engine, снаружи недоступен.
+    """
 
     def __init__(
         self,
@@ -29,7 +34,7 @@ class StaticTemplatesCache:
         elif content:
             key = content
         else:
-            raise NotImplemented
+            raise NotImplementedError
 
         with self.lock:
             obj = self.cache.get(key)
@@ -48,7 +53,7 @@ class StaticTemplatesCache:
                 elif content:
                     obj = StaticTemplate(self.logger, content=content)
                 else:
-                    raise NotImplemented
+                    raise NotImplementedError
 
                 self.cache[key] = obj
 

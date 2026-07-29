@@ -1,9 +1,11 @@
+from typing import Any
+
 from jinja2 import Environment
 
 from classic.criteria import Criteria, And, Or, Xor, Invert
 
 
-def traverse(criteria: Criteria, translators) -> str:
+def traverse(criteria: Criteria[Any], translators) -> str:
     if isinstance(criteria, And):
         return ' AND '.join((
             traverse(nested, translators)
@@ -26,7 +28,7 @@ def traverse(criteria: Criteria, translators) -> str:
         return macro(criteria)
 
 
-def contains(criteria: Criteria, *translators) -> bool:
+def contains(criteria: Criteria[Any], *translators) -> bool:
     if isinstance(criteria, (And, Or)):
         return any((
             contains(nested, *translators)

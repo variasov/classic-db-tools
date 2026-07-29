@@ -7,6 +7,12 @@ from jinja2 import Template
 
 
 class Renderer(threading.local):
+    """
+    Производит рендер параметров в динамическом запросе.
+
+    Используется под капотом DynamicTemplate, снаружи недоступен.
+    """
+
     bind_params: Dict[str, object]
     param_style: str
     param_index: int

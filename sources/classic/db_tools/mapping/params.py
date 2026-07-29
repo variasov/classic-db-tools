@@ -23,17 +23,23 @@ class Relationship:
 
 @dataclass(frozen=True, init=False)
 class Assign(Relationship):
-    pass
+    """
+    Указывает, что target необходимо присвоить полю объекта.
+    """
 
 
 @dataclass(frozen=True, init=False)
 class Append(Relationship):
-    pass
+    """
+    Указывает, что target необходимо добавить в список в поле объекта.
+    """
 
 
 @dataclass(frozen=True, init=False)
 class Add(Relationship):
-    pass
+    """
+    Указывает, что target необходимо добавить в множество в поле объекта.
+    """
 
 
 @dataclass(frozen=True)
@@ -71,6 +77,18 @@ class Parameter:
 
 @dataclass(frozen=True, init=False)
 class Entity(Parameter):
+    """
+    Принимает фабрику для объекта и одно или несколько названий поле объекта,
+    из которых складывается id объекта.
+
+    Применение Entity указывает мапперу, что объекты, возвращаемые фабрикой,
+    имеют ID, складываемый из полей объекта, указанных во втором параметре.
+
+    Такие объекты маппер будет сопоставлять при парсинге с помощью словаря,
+    что приведет к тому, что на каждый ID будет встречаться только один объект
+    в результате.
+    """
+
     id: Union[str, Tuple[str, ...]]
 
     def __init__(
@@ -86,10 +104,9 @@ class Entity(Parameter):
         # Set ID
         if isinstance(id_, str):
             id_ = (id_.lower(), )
-        elif isinstance(id, tuple):
+        elif isinstance(id_, tuple):
             id_ = tuple((_.lower() for _ in id_))
-        else:
-            raise NotImplementedError
+
         object.__setattr__(self, 'id', id_)
 
         # Set relationships
@@ -98,6 +115,19 @@ class Entity(Parameter):
 
 @dataclass(frozen=True, init=False)
 class Value(Parameter):
+    """
+    Принимает фабрику для объекта и bool-параметр, указывающий,
+    может ли объект иметь None в каждом поле,
+    или же вместо объекта с None следует вернуть None.
+
+    Применение Valuee указывает мапперу, что объекты, возвращаемые фабрикой,
+    не имеют никакого ID, и отличаются друг от друга всеми полями.
+
+    Такие объекты маппер будет инстанцировать на каждую строку,
+    не переиспользуя инстанцированные ранее объекты, что приведет к тому,
+    что в результате запроса могут встречаться одинаковые объекты.
+    """
+
     reduce_none: bool
 
     def __init__(

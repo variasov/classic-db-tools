@@ -11,6 +11,12 @@ from ..template import Template
 
 
 class DynamicTemplate(Template):
+    """
+    Динамический SQL-шаблон.
+
+    Используется под капотом Query и MapperQuery, снаружи недоступен.
+    """
+
 
     def __init__(
         self,
