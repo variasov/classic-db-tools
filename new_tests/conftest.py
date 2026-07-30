@@ -6,7 +6,19 @@ import psycopg
 
 @pytest.fixture
 def engine():
-    return Engine(psycopg, templates_dirs=os.path.join(os.path.dirname(__file__), 'sql'))
+    factory = lambda: psycopg.connect(
+        dbname=os.environ['PGDBNAME'],
+        user=os.environ['PGUSER'],
+        password=os.environ['PGPASSWORD'],
+        host=os.environ['PGHOST'],
+        port=int(os.environ['PGPORT']),
+    )
+
+    return Engine(
+        psycopg,
+        factory,
+        templates_dirs=os.path.join(os.path.dirname(__file__), 'sql'),
+    )
 
 
 @pytest.fixture

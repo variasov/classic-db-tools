@@ -47,10 +47,17 @@ class PsycopgTransaction(Transaction, driver=psycopg):
             conn.deferrable = old_deferrable
 
     def _start_savepoint(self):
-        pass
+        self._savepoint_name = f'savepoint_{id(self)}'
+        self._current.conn.execute(f'SAVEPOINT {self._savepoint_name}')
 
     def _release_savepoint(self):
-        pass
+        self._current.conn.execute(f'RELEASE SAVEPOINT {self._savepoint_name}')
+
+    def _rollback_savepoint(self):
+        self._current.conn.execute(
+            f'ROLLBACK TO SAVEPOINT {self._savepoint_name}',
+        )
+        self._release_savepoint()
 
 
 class PsycopgConnectionValidator(ConnectionValidator, driver=psycopg):

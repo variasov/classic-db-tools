@@ -43,6 +43,10 @@ class Transaction:
     def _release_savepoint(self):
         raise NotImplementedError
 
+    def _rollback_savepoint(self):
+        conn = cast(Connection, self._current.conn)
+        conn.rollback()
+
     def __enter__(self):
         if self._current.conn is None:
             self._conn_scope = ConnectionScope(
@@ -88,8 +92,12 @@ class Transaction:
                 else:
                     self._release_savepoint()
             else:
-                conn.rollback()
-            self._restore_params()
+                if self._first:
+                    conn.rollback()
+                else:
+                    self._rollback_savepoint()
+            if self._first:
+                self._restore_params()
         finally:
             if self._first:
                 self._first = None

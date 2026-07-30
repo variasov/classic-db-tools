@@ -60,7 +60,7 @@ class TestTransaction:
                 assert row is None
             with engine.transaction():
                 row = engine.query(_SELECT, static=True).one(t='outer')
-            assert row is None
+            assert row is not None
 
     def test_nested_transaction_all_commit(self, engine):
         with engine.conn() as conn:
@@ -98,6 +98,117 @@ class TestTransaction:
 
         do_work()
         assert call_count == 1
+
+
+class TestSavepoint:
+
+    def test_nested_savepoint_commit(self, engine):
+        with engine.conn() as conn:
+            _make_table(conn)
+            with engine.transaction():
+                engine.query(_INSERT, static=True).execute(t='sp_outer', v=1)
+                with engine.transaction():
+                    engine.query(_INSERT, static=True).execute(t='sp_inner', v=2)
+            assert engine.query(_SELECT, static=True).one(t='sp_outer') is not None
+            assert engine.query(_SELECT, static=True).one(t='sp_inner') is not None
+
+    def test_nested_savepoint_rollback_inner(self, engine):
+        with engine.conn() as conn:
+            _make_table(conn)
+            with engine.transaction():
+                engine.query(_INSERT, static=True).execute(t='sp_outer', v=1)
+                try:
+                    with engine.transaction():
+                        engine.query(_INSERT, static=True).execute(t='sp_inner', v=2)
+                        raise RuntimeError('inner fail')
+                except RuntimeError:
+                    pass
+            assert engine.query(_SELECT, static=True).one(t='sp_outer') is not None
+            assert engine.query(_SELECT, static=True).one(t='sp_inner') is None
+
+    def test_nested_savepoint_rollback_outer(self, engine):
+        with engine.conn() as conn:
+            _make_table(conn)
+            try:
+                with engine.transaction():
+                    engine.query(_INSERT, static=True).execute(t='sp_outer', v=1)
+                    with engine.transaction():
+                        engine.query(_INSERT, static=True).execute(t='sp_inner', v=2)
+                    raise RuntimeError('outer fail')
+            except RuntimeError:
+                pass
+            assert engine.query(_SELECT, static=True).one(t='sp_outer') is None
+            assert engine.query(_SELECT, static=True).one(t='sp_inner') is None
+
+    def test_nested_decorator_savepoint(self, engine):
+        with engine.conn() as conn:
+            _make_table(conn)
+
+            @engine.transaction
+            def outer():
+                engine.query(_INSERT, static=True).execute(t='sp_dec_outer', v=1)
+
+                @engine.transaction
+                def inner():
+                    engine.query(_INSERT, static=True).execute(t='sp_dec_inner', v=2)
+
+                inner()
+
+            outer()
+
+            assert engine.query(_SELECT, static=True).one(t='sp_dec_outer') is not None
+            assert engine.query(_SELECT, static=True).one(t='sp_dec_inner') is not None
+
+    def test_nested_decorator_rollback_to_savepoint(self, engine):
+        with engine.conn() as conn:
+            _make_table(conn)
+
+            @engine.transaction
+            def outer():
+                engine.query(_INSERT, static=True).execute(t='sp_dec_outer', v=1)
+                try:
+                    inner()
+                except RuntimeError:
+                    pass
+
+            @engine.transaction
+            def inner():
+                engine.query(_INSERT, static=True).execute(t='sp_dec_inner', v=2)
+                raise RuntimeError('inner fail')
+
+            outer()
+
+            assert engine.query(_SELECT, static=True).one(t='sp_dec_outer') is not None
+            assert engine.query(_SELECT, static=True).one(t='sp_dec_inner') is None
+
+    def test_nested_savepoints_rollback_to_each_level(self, engine):
+        with engine.conn() as conn:
+            _make_table(conn)
+            with engine.transaction():
+                engine.query(_INSERT, static=True).execute(t='sp_outer', v=1)
+                with engine.transaction():
+                    engine.query(_INSERT, static=True).execute(t='sp_middle', v=2)
+                    try:
+                        with engine.transaction():
+                            engine.query(_INSERT, static=True).execute(
+                                t='sp_inner', v=3,
+                            )
+                            raise RuntimeError('inner fail')
+                    except RuntimeError:
+                        pass
+                    engine.query(_INSERT, static=True).execute(
+                        t='sp_middle_after_inner', v=4,
+                    )
+
+            assert engine.query(_SELECT, static=True).one(t='sp_outer') is not None
+            assert engine.query(_SELECT, static=True).one(t='sp_middle') is not None
+            assert engine.query(_SELECT, static=True).one(t='sp_inner') is None
+            assert (
+                engine.query(_SELECT, static=True).one(
+                    t='sp_middle_after_inner',
+                )
+                is not None
+            )
 
 
 class TestConn:
