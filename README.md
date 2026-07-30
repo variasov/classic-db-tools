@@ -26,21 +26,20 @@ engine = Engine(
     templates_dirs='path/to/sql/templates/dir'
 )
 
-# При входе в контекст движок займет соединение в пуле,
-# на выходе, по дефолту, закоммитит
-with engine.transaction():
-    # Создание схемы:
-    engine.query_from('tasks/ddl.sql').execute()
-    
-    # Сохранение данных
-    engine.query_from('tasks/save.sql').executemany([
-        {'title': 'Some Task', 'body': 'Do something'},
-        {'title': 'Another Task', 'body': 'Do anything'},
-    ])
-    
-    # Получение данных
-    task = engine.query_from('tasks/get_by_id.sql').one(id=1)
-    # (1, 'Some Task', 'Do something')
+# По дефолту движок работает со встроенным пулом в режим автокоммита
+
+# Создание схемы:
+engine.query_from('tasks/ddl.sql').execute()
+
+# Сохранение данных
+engine.query_from('tasks/save.sql').executemany([
+    {'title': 'Some Task', 'body': 'Do something'},
+    {'title': 'Another Task', 'body': 'Do anything'},
+])
+
+# Получение данных
+task = engine.query_from('tasks/get_by_id.sql').one(id=1)
+# (1, 'Some Task', 'Do something')
 ```
 
 В директории sql рядом с .py файлом надо разместить 3 файла
@@ -99,19 +98,21 @@ with engine.transaction(commit=False):
 ```
 
 #### Соединения без транзакций (engine.conn())
-Для случаев, когда не требуется управление транзакциями (например, с autocommit режимом).
+Для случаев, когда не требуется управление транзакциями (например, с autocommit режимом), и когда необходимо удержать коннект для нескольких запросов.
 При выходе соединение просто возвращается в пул без commit/rollback:
 
 Как контекстный менеджер:
 ```python
 with engine.conn():
     engine.query('SELECT 1').scalar()
+    engine.query('SELECT 2').scalar()
 ```
 
 Как декоратор:
 ```python
 @engine.conn()
 def some_method():
+    engine.query('SELECT 1').scalar()
     engine.query('SELECT 1').scalar()
 ```
 

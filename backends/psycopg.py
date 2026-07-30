@@ -16,9 +16,6 @@ class PsycopgTransaction(Transaction, driver=psycopg):
         if conn.info.transaction_status != IDLE:
             conn.rollback()
 
-        self.old_autocommit = conn.autocommit
-        conn.autocommit = False
-
         if readonly := self._params.get('readonly'):
             self.old_read_only = conn.read_only
             conn.read_only = readonly
@@ -34,10 +31,6 @@ class PsycopgTransaction(Transaction, driver=psycopg):
     def _restore_params(self):
         conn: psycopg.Connection = self._current.conn
 
-        old_autocommit = getattr(self, 'old_autocommit', None)
-        if old_autocommit is not None:
-            conn.autocommit = old_autocommit
-
         old_read_only = getattr(self, 'old_read_only', None)
         if old_read_only is not None:
             conn.read_only = old_read_only
@@ -52,36 +45,26 @@ class PsycopgTransaction(Transaction, driver=psycopg):
 
     def _start_savepoint(self):
         self._savepoint_name = f'savepoint_{id(self)}'
+        self._current.conn.rollback()
         self._current.conn.execute(f'SAVEPOINT {self._savepoint_name}')
 
     def _release_savepoint(self):
-        self._current.conn.execute(f'RELEASE SAVEPOINT {self._savepoint_name}')
+        self._current.conn.commit()
 
     def _rollback_savepoint(self):
-        self._current.conn.execute(f'ROLLBACK TO SAVEPOINT {self._savepoint_name}')
-        self._current.conn.execute(f'RELEASE SAVEPOINT {self._savepoint_name}')
+        self._current.conn.rollback()
 
+    def _restore_params(self):
+        conn: psycopg.Connection = self._current.conn
 
-class PsycopgConnectionValidator(ConnectionValidator, driver=psycopg):
+        old_read_only = getattr(self, 'old_read_only', None)
+        if old_read_only is not None:
+            conn.read_only = old_read_only
 
-    def validate(self, conn):
-        try:
-            cur = conn.cursor()
-            cur.execute('SELECT 1')
-            cur.fetchone()
-            cur.close()
-        except Exception:
-            return False
-        return True
+        old_isolation_level = getattr(self, 'old_isolation_level', None)
+        if old_isolation_level is not None:
+            conn.isolation_level = old_isolation_level
 
-    def before_release(self, conn: psycopg.Connection):
-        if conn.closed:
-            return False
-        status = conn.info.transaction_status
-        if status == UNKNOWN:
-            return False
-        try:
-            conn.rollback()
-        except Exception:
-            return False
-        return self.validate(conn)
+        old_deferrable = getattr(self, 'old_deferrable', None)
+        if old_deferrable is not None:
+            conn.deferrable = old_deferrable

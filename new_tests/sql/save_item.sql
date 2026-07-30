@@ -1,1 +1,0 @@
-INSERT INTO test_items (title, value) VALUES (%(title)s, %(value)s)

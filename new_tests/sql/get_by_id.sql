@@ -1,1 +1,1 @@
-SELECT id, title, value FROM test_items WHERE id = %(id)s
+SELECT id, title, value FROM items WHERE id = %(id)s
