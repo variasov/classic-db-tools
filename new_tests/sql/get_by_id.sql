@@ -1,0 +1,1 @@
+SELECT id, title, value FROM test_items WHERE id = %(id)s

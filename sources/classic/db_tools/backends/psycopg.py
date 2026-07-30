@@ -49,7 +49,7 @@ class PsycopgTransaction(Transaction, driver=psycopg):
     def _start_savepoint(self):
         pass
 
-    def _release_save_point(self):
+    def _release_savepoint(self):
         pass
 
 
