@@ -1,8 +1,9 @@
 from dataclasses import dataclass
+from typing import Union
 
 import pytest
 
-from classic.db_tools import Engine, Entity, Append, Value
+from classic.db_tools import Assign, Engine, Entity, Append, Value
 
 from .dto import Task, Status, TaskGroup
 
@@ -16,7 +17,7 @@ sql = '''
         task_status.title   AS status__title
     FROM tasks
     LEFT JOIN task_status ON task_status.task_id = tasks.id
-    ORDER BY tasks.id, task_status.id 
+    ORDER BY tasks.id, task_status.id
 '''
 
 
@@ -67,8 +68,12 @@ def test_returning_with_rels__all(engine: Engine, ddl, tasks, static):
 
 
 @pytest.mark.parametrize('static', (True, False))
-def test_returning_with_rels__all__nested(engine: Engine, ddl, tasks, static):
-    query = engine.query(sql, static=static).map_to(TaskGroup, 'task_group', **mapper)
+def test_returning_with_rels__all__nested(
+    engine: Engine, ddl, tasks, static,
+):
+    query = engine.query(sql, static=static).map_to(
+        TaskGroup, 'task_group', **mapper,
+    )
     assert query.all() == [
         TaskGroup(id=1, tasks=[
             Task(id=1, name='First', statuses=[
@@ -103,7 +108,7 @@ def test_returning_with_rels__one(engine: Engine, ddl, tasks, static):
 
 def test_custom_name(engine: Engine):
     query = engine.query('''
-        SELECT 
+        SELECT
             data.task_id        AS custom__id,
             data.task_name      AS custom__name,
             data.status_id      AS another__id,
@@ -136,12 +141,12 @@ class SomeObj:
 @dataclass
 class AnotherObj:
     id: int
-    some_obj: SomeObj = None
+    some_obj: Union[SomeObj, None] = None
 
 
 def test_one_to_one(engine: Engine):
     query = engine.query('''
-    SELECT 
+    SELECT
         data.AnotherObj__id as AnotherObj__id,
         data.SomeObj__id as SomeObj__id,
         data.SomeObj__value as SomeObj__value
@@ -152,7 +157,7 @@ def test_one_to_one(engine: Engine):
     ) AS data(AnotherObj__id, SomeObj__id, SomeObj__value)
     ''').map_to(
         AnotherObj,
-        AnotherObj=Entity(AnotherObj, 'id'),
+        AnotherObj=Entity(AnotherObj, 'id', some_obj=Assign('SomeObj')),
         SomeObj=Entity(SomeObj, 'id'),
     )
     assert query.all() == [
@@ -163,7 +168,7 @@ def test_one_to_one(engine: Engine):
 
 def test_value(engine: Engine):
     query = engine.query('''
-        SELECT 
+        SELECT
             data.task_id        AS custom__id,
             data.task_name      AS custom__name
         FROM (
@@ -175,4 +180,3 @@ def test_value(engine: Engine):
         custom=Value(Task),
     )
     assert query.one() == Task(id=1, name='First', statuses=[])
-

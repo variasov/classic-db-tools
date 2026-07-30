@@ -1,14 +1,14 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import inspect
 from typing import (
-    Any, Type, Callable, Tuple, Dict,
-    Union, get_args, get_origin, List, Set,
+    Any, Callable, Tuple, Dict, TypeAlias,
+    Union, get_args, get_origin, List, Set, Type,
 )
 
 from frozendict import frozendict
 
 
-Factory = Union[Type[Any], Callable[[Any, ...], Any]]
+Factory: TypeAlias = Union[Type[Any], Callable[[Any], Any]]
 
 
 @dataclass(frozen=True, init=False)
@@ -23,22 +23,29 @@ class Relationship:
 
 @dataclass(frozen=True, init=False)
 class Assign(Relationship):
-    pass
+    """
+    Указывает, что target необходимо присвоить полю объекта.
+    """
 
 
 @dataclass(frozen=True, init=False)
 class Append(Relationship):
-    pass
+    """
+    Указывает, что target необходимо добавить в список в поле объекта.
+    """
 
 
 @dataclass(frozen=True, init=False)
 class Add(Relationship):
-    pass
+    """
+    Указывает, что target необходимо добавить в множество в поле объекта.
+    """
 
 
 @dataclass(frozen=True)
 class Parameter:
     factory: Factory
+    relationships: Dict[str, Relationship]
 
     def _parse_relationships(self, rels: Dict[str, Relationship]) -> None:
         try:
@@ -58,20 +65,34 @@ class Parameter:
             annot = sign_param.annotation
             origin = get_origin(annot)
             args = get_args(annot)
-            if origin is None:
-                new_rels[name_] = Assign(annot.__name__.lower())
-            elif issubclass(origin, List):
-                new_rels[name_] = Append(args[0].__name__.lower())
-            elif issubclass(origin, Set):
-                new_rels[name_] = Add(args[0].__name__.lower())
+            try:
+                if origin is None:
+                    new_rels[name_] = Assign(annot.__name__.lower())
+                elif issubclass(origin, List):
+                    new_rels[name_] = Append(args[0].__name__.lower())
+                elif issubclass(origin, Set):
+                    new_rels[name_] = Add(args[0].__name__.lower())
+            except TypeError:
+                continue
 
         object.__setattr__(self, 'relationships', frozendict(new_rels))
 
 
 @dataclass(frozen=True, init=False)
 class Entity(Parameter):
+    """
+    Принимает фабрику для объекта и одно или несколько названий поле объекта,
+    из которых складывается id объекта.
+
+    Применение Entity указывает мапперу, что объекты, возвращаемые фабрикой,
+    имеют ID, складываемый из полей объекта, указанных во втором параметре.
+
+    Такие объекты маппер будет сопоставлять при парсинге с помощью словаря,
+    что приведет к тому, что на каждый ID будет встречаться только один объект
+    в результате.
+    """
+
     id: Union[str, Tuple[str, ...]]
-    relationships: Dict[str, Relationship] = field(default_factory=frozendict)
 
     def __init__(
         self,
@@ -84,12 +105,12 @@ class Entity(Parameter):
         object.__setattr__(self, 'factory', factory)
 
         # Set ID
-        object.__setattr__(
-            self, 'id',
-            (id_.lower(),)
-            if isinstance(id_, str) else
-            tuple((_.lower() for _ in id_))
-        )
+        if isinstance(id_, str):
+            id_ = (id_.lower(), )
+        elif isinstance(id_, tuple):
+            id_ = tuple((_.lower() for _ in id_))
+
+        object.__setattr__(self, 'id', id_)
 
         # Set relationships
         self._parse_relationships(relationships)
@@ -97,8 +118,20 @@ class Entity(Parameter):
 
 @dataclass(frozen=True, init=False)
 class Value(Parameter):
+    """
+    Принимает фабрику для объекта и bool-параметр, указывающий,
+    может ли объект иметь None в каждом поле,
+    или же вместо объекта с None следует вернуть None.
+
+    Применение Valuee указывает мапперу, что объекты, возвращаемые фабрикой,
+    не имеют никакого ID, и отличаются друг от друга всеми полями.
+
+    Такие объекты маппер будет инстанцировать на каждую строку,
+    не переиспользуя инстанцированные ранее объекты, что приведет к тому,
+    что в результате запроса могут встречаться одинаковые объекты.
+    """
+
     reduce_none: bool
-    relationships: Dict[str, Relationship] = field(default_factory=frozendict)
 
     def __init__(
         self,
@@ -117,7 +150,7 @@ class Value(Parameter):
         self._parse_relationships(relationships)
 
 
-Mapping = frozendict[str, Parameter]
+Mapping: TypeAlias = frozendict[str, Parameter]
 
 
 def create_mapping(**params: Parameter) -> Mapping:

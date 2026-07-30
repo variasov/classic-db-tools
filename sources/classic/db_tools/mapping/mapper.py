@@ -2,19 +2,20 @@ import ast
 from collections import defaultdict
 from itertools import chain
 from typing import (
-    Iterable, List, Tuple, Dict, Optional,
-    Generator, Callable, TypeVar, Literal, NamedTuple,
+    Any, Iterable, List, Tuple, Dict,
+    Optional, Generator, NamedTuple, Type, cast,
 )
+import threading
+
+from classic.db_tools.types import Cursor
 
 from .params import (
-    Parameter, Relationship, Assign, Append, Add, Entity, Value, Mapping,
+    Parameter, Relationship, Assign, Append, Add,
+    Entity, Value, Mapping,
 )
-from ..types import Row
 
+from .types import Accessor, MapperFunc
 
-Accessor = Literal['attr', 'item']
-Result = TypeVar('Result')
-MapperFunc = Callable[[], Generator[Result, Row, None]]
 
 # Aliases for readability
 Prefix = str
@@ -22,8 +23,34 @@ Field = str
 Column = str
 
 # Tuple positions for fields_to_columns
-index = 0
-col = 1
+INDEX = 0
+COLUMN = 1
+
+
+class Mapper:
+
+    def __init__(self, mapping: Mapping):
+        self._cache = {}
+        self._lock = threading.RLock()
+        self._mapping = mapping
+        self._compile_mapper_func = compile_mapper_func
+
+    def func_for_cursor(
+        self,
+        cursor: Cursor,
+        mapping: Mapping,
+        result: str,
+    ) -> MapperFunc:
+        columns = tuple(column[0] for column in cursor.description)
+        key = (result, mapping or self._mapping, columns)
+
+        with self._lock:
+            mapper = self._cache.get(key)
+            if not mapper:
+                mapper = self._compile_mapper_func(*key)
+                self._cache[key] = mapper
+
+        return mapper
 
 
 class ResultParam(NamedTuple):
@@ -55,7 +82,12 @@ class Context:
 
     @staticmethod
     def accessor(param: Parameter) -> Accessor:
-        return 'item' if issubclass(param.factory, dict) else 'attr'
+        try:
+            return 'item' if issubclass(
+                cast(Type[Any], param.factory), dict
+            ) else 'attr'
+        except TypeError:
+            return 'item'
 
     def namespace(self):
         return {
@@ -97,7 +129,7 @@ class Context:
 
 
 def compile_mapper_func(
-    result: Result,
+    result: str,
     mapper: Mapping,
     columns: Tuple[Column, ...],
 ) -> MapperFunc:
@@ -116,9 +148,9 @@ def compile_mapper_func(
     func = namespace['mapper_func']
 
     # Add source code to func for easy debugging
-    func.sources = lambda: ast.unparse(ast_module)
+    setattr(func, 'sources', lambda: ast.unparse(ast_module))
 
-    return func
+    return cast(MapperFunc, func)
 
 
 def render_identity_maps(ctx: Context) -> Iterable[ast.stmt]:
@@ -162,7 +194,7 @@ def render_cycle(ctx: Context) -> ast.stmt:
             )
         )
     else:
-        raise NotImplemented
+        raise NotImplementedError
 
     return ast.For(
         target=ast.Name("row_", ast.Store()),
@@ -244,7 +276,7 @@ def render_factory_call(
                     (
                         ast.Subscript(
                             ast.Name("row", ast.Load()),
-                            ast.Constant(column[index]),
+                            ast.Constant(column[INDEX]),
                             ast.Load(),
                         )
                     ),
@@ -303,7 +335,7 @@ def render_rel_factory_call(
                 render_mapper_call(right),
             )
         else:
-            raise NotImplemented
+            raise NotImplementedError
 
     elif isinstance(rel, (Append, Add)):
         if accessor == "item":
@@ -311,8 +343,6 @@ def render_rel_factory_call(
                 default = ast.List([], ast.Load())
             elif isinstance(rel, Add):
                 default = ast.Set([])
-            else:
-                raise NotImplemented
 
             yield ast.If(
                 test=ast.Compare(
@@ -426,15 +456,15 @@ def render_rel_factory_call(
                 orelse=[],
             )
         else:
-            raise NotImplemented
+            raise NotImplementedError
     else:
-        raise NotImplemented
+        raise NotImplementedError
 
 
 def render_obj_id(ctx: Context, prefix: Prefix, entity: Entity) -> ast.stmt:
     if len(entity.id) == 1:
         id_field = entity.id[0]
-        id_col = ctx.fields_to_columns[prefix][id_field][index]
+        id_col = ctx.fields_to_columns[prefix][id_field][INDEX]
         id_val = ast.Subscript(
             ast.Name("row", ast.Load()),
             ast.Constant(id_col),
@@ -445,7 +475,7 @@ def render_obj_id(ctx: Context, prefix: Prefix, entity: Entity) -> ast.stmt:
             [
                 ast.Subscript(
                     ast.Name("row", ast.Load()),
-                    ast.Constant(ctx.fields_to_columns[prefix][field][index]),
+                    ast.Constant(ctx.fields_to_columns[prefix][field][INDEX]),
                     ast.Load(),
                 )
                 for field in entity.id
@@ -475,7 +505,7 @@ def render_get_or_create(
         for field, rel in ctx.rels[prefix].items()
         if isinstance(rel, (Append, Add))
     ]
-    body = [
+    if_body: List[ast.stmt] = [
         render_factory_call(ctx, prefix, param),
         *(
             ast.Assign(
@@ -498,7 +528,7 @@ def render_get_or_create(
             ], ast.Load()),
         )
     ]
-    else_body = [
+    else_body: List[ast.stmt] = [
         ast.Assign(
             [
                 ast.Tuple([
@@ -519,14 +549,14 @@ def render_get_or_create(
             ops=[ast.Is()],
             comparators=[ast.Constant(None)],
         ),
-        body=body,
+        body=if_body,
         orelse=else_body,
     )
 
 
 def render_entity(ctx: Context, prefix: Prefix, entity: Entity) -> ast.stmt:
     id_columns = [
-        cols[index]
+        cols[INDEX]
         for field, cols in ctx.fields_to_columns[prefix].items()
         if field in entity.id
     ]
@@ -583,7 +613,10 @@ def render_value(
     prefix: Prefix,
     value: Value,
 ) -> ast.stmt:
-    columns = [col_[index] for col_ in ctx.fields_to_columns[prefix].values()]
+    columns = [
+        col_[INDEX] for col_
+        in ctx.fields_to_columns[prefix].values()
+    ]
     if_body = []
     if value.reduce_none:
         if_body.append(
@@ -634,7 +667,7 @@ def render_mappers(ctx: Context) -> Generator[ast.stmt, None, None]:
         elif isinstance(mapper, Value):
             yield render_value(ctx, prefix, mapper)
         else:
-            raise NotImplemented
+            raise NotImplementedError
 
 
 def render_return() -> ast.stmt:

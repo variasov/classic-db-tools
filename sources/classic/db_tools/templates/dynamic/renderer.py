@@ -1,12 +1,18 @@
 from collections.abc import Iterable
 import threading
-from typing import Dict
+from typing import Dict, List, Tuple, Union
 
 from markupsafe import Markup
 from jinja2 import Template
 
 
 class Renderer(threading.local):
+    """
+    Производит рендер параметров в динамическом запросе.
+
+    Используется под капотом DynamicTemplate, снаружи недоступен.
+    """
+
     bind_params: Dict[str, object]
     param_style: str
     param_index: int
@@ -89,7 +95,7 @@ class Renderer(threading.local):
         template: Template,
         data: Dict[str, object],
         param_style: str,
-    ):
+    ) -> Tuple[str, Union[Dict[str, object], List[object]]]:
         self.bind_params = {}
         self.param_style = param_style
         self.param_index = 0
@@ -100,7 +106,7 @@ class Renderer(threading.local):
             elif self.param_style in ('qmark', 'numeric', 'format', 'asyncpg'):
                 bind_params = list(self.bind_params.values())
             else:
-                raise NotImplemented
+                raise NotImplementedError
             return query, bind_params
         finally:
             del self.bind_params

@@ -1,57 +1,111 @@
-from functools import wraps, partial
+from functools import wraps
 import logging
 from os import PathLike
-from types import TracebackType
+from types import ModuleType
 from typing import (
-    Any, Iterable, Generator, Union, List,
-    Sequence, Generic, Hashable,
-    Type, TypeVar, Callable, Optional,
+    Dict, TypeVar, Any, ParamSpec, Union, Sequence,
+    Callable, Optional, Type, cast, overload,
 )
-import threading
 from pathlib import Path
 
 from frozendict import frozendict
-from .mapping import (
-    Result, Parameter,
-    MapperFunc, compile_mapper_func,
-    Mapping, create_mapping,
-)
-from .doublewrap import doublewrap
+
+from .mapping import Mapper, Parameter
 from .pool import ConnectionPool
-from .types import Cursor, CursorParams, Row
 from .transaction import Transaction
-from .scoped_connection import ScopedConnection
+from .conn_scope import ConnectionScope
+from .scope import Scope
+from .query import Query
+from .templates import StaticTemplatesCache, DynamicTemplatesCache
 
-from . import dynamic, static
 
-
-QueryParams = Union[CursorParams, Any]
+Params = ParamSpec('Params')
+Result = TypeVar('Result')
 
 
 class Engine:
+    """
+    Точка входа в библиотеку.
+
+    Для доступа к разным инстансам БД следует использовать разные инстансы Engine.
+    """
+
+    current: Scope
+
+    _templates_dirs: Sequence[Union[str, PathLike]]
+    _tx_cls: Type[Transaction]
+    _mapper: Mapper
+    _factory: Callable[[], Any]
+    _pool: ConnectionPool
+    _pool_cls: Type[ConnectionPool]
+    _logger: logging.Logger
+
 
     def __init__(
         self,
-        pool: ConnectionPool,
+        driver: ModuleType,
+        factory: Optional[Callable[[], Any]] = None,
         /,
-        templates_dirs: Union[
-            str, PathLike, Sequence[Union[str, PathLike]]
-        ] = None,
-        default_mapping: Union[Mapping, dict[str, Parameter]] = None,
-        logger: logging.Logger = None,
-        commit_on_exit: bool = True,
+        templates_dirs: Optional[Union[
+            str, PathLike, Sequence[Union[str, PathLike]],
+        ]] = None,
         str_templates_static_by_default: bool = False,
         identifier_quote_char: Optional[str] = None,
-    ):
-        self.pool = pool
-        self.conn = ScopedConnection(pool, commit_on_exit)
+        default_mapping: Optional[dict[str, Parameter]] = None,
+        pool_class: Type[ConnectionPool] = ConnectionPool,
+        pool_kwargs: Optional[Dict[str, Any]] = None,
+        logger: Optional[logging.Logger] = None,
+    ) -> None:
+        """
+        Аргументы:
 
-        if default_mapping:
-            self.mapping = create_mapping(**default_mapping)
+        driver: Модуль драйвера к БД, с которым будет происходить работа.
+                Модуль должен соответствовать спецификации DB API 2.0 (PEP 249).
+
+        factory: Опциональная функция-фабрика, порождающая подключение к БД.
+                 При отсутствии будет использоваться функция connect из модуля.
+
+        templates_dirs: Один или несколько путей до директорий,
+                        содержащих шаблоны запросов.
+
+        str_templates_static_by_default: Регулирует значение по умолчанию
+                                         аргмуента static в методе Engine.query.
+
+        identifier_quote_char: Символ кавычек, используемый для экранирования идентификаторов.
+                               Зависит от БД, используемой движком. Может быть ', " и `.
+
+        default_mapping: Конфигурация для маппера по умолчанию. Будет использоваться
+                         методом Query.map_to, если при вызове map_to не переданы kwargs.
+
+        pool_class: Класс пула соединений, используемый Engine.
+
+        pool_kwargs: Параметры для пула соединений. Распаковывается в конструктор пула.
+
+        logger: Кастомный объект logging.Logger для логгирования внутри библиотеки.
+                Если не задан, используется логгер с именем 'classic-db-tools'
+        """
+
+        self.current = Scope()
+
+        assert hasattr(driver, 'connect')
+        self.driver = driver
+
+        if factory is None:
+            self._factory = driver.connect
         else:
-            self.mapping = frozendict()
+            assert callable(factory)
+            self._factory = factory
 
-        self.logger = logger or logging.getLogger('classic-db-tools')
+        self._pool_cls = pool_class
+        self._pool = pool_class(driver, self._factory, **(pool_kwargs or {}))
+
+        self._tx_cls = Transaction.implementations[self.driver]
+
+        self._logger = logger or logging.getLogger('classic-db-tools')
+
+        self._str_templates_static_by_default = str_templates_static_by_default
+
+        self._mapper = Mapper(frozendict(default_mapping or {}))
 
         if templates_dirs is None:
             self.templates_paths = []
@@ -68,381 +122,149 @@ class Engine:
                 templates_dirs,
             )
 
-        self.dynamic_templates = dynamic.DynamicQueriesCache(
-            self.logger,
+        self.dynamic_templates = DynamicTemplatesCache(
+            self._logger,
             templates_paths=self.templates_paths,
+            paramstyle=self.driver.paramstyle,
             identifier_quote_char=identifier_quote_char,
         )
-        self.static_templates = static.StaticQueriesCache(
-            self.logger,
+        self.static_templates = StaticTemplatesCache(
+            self._logger,
             templates_paths=self.templates_paths,
         )
-        self.mapper_cache = {}
-        self.mapper_cache_lock = threading.Lock()
-        self.str_templates_static_by_default = str_templates_static_by_default
 
-    def get_mapper_from_cache(self, key: Hashable):
-        return self.mapper_cache.get(key)
+    def query_from(self, filename: str) -> Query:
+        """
+        Возвращает объект-запрос с шаблоном SQL, содержащимя по указанному пути.
 
-    def cache_mapper(self, key: Hashable, value: MapperFunc):
-        with self.mapper_cache_lock:
-            self.mapper_cache[key] = value
+        Поиск шаблона производится относительно директорий с шаблонами,
+        переданных в конструктор Engine. Возвращается первый попавшийся.
 
-    def query_from(self, filename: str) -> 'Query':
+        Статические шаблон должны иметь рашсирение .sql,
+        динамический - .sql.tmpl.
+
+        При этом объект Query сам по себе произведет загрузку содержимого шаблона
+        не сразу, а при первом обращении к методам, провоцирующим исполнение.
+
+        Нужен для работы с файловыми шаблонами SQL.
+        """
+
         if filename.endswith('.sql'):
-            create_lazy = self.static_templates.create_lazy
+            tmpl = self.static_templates.get_or_create
         elif filename.endswith('.sql.tmpl'):
-            create_lazy = self.dynamic_templates.create_lazy
+            tmpl = self.dynamic_templates.get_or_create
         else:
             raise ValueError(f'Unsupported filename extension: {filename}')
-        return Query(self, create_lazy(filename=filename))
+        return Query(
+            cast(Callable[[], ConnectionScope], self.conn),
+            self._mapper,
+            lambda: tmpl(filename=filename),
+        )
 
-    def query(self, content: str, static: bool = None) -> 'Query':
+    def query(self, content: str, static: Optional[bool] = None) -> Query:
+        """
+        Возвращает объект-запрос с указанным шаблоном SQL.
+
+        Параметр static указывает на тип шаблона.
+        Если передаваемый шаблон содержит макросы Jinja, static должен быть False.
+
+        Нужен для случаев, когда SQL сгенерирован динамически
+        или указывается прямо в Python-коде.
+        """
         if static is None:
-            static = self.str_templates_static_by_default
+            static = self._str_templates_static_by_default
 
         if static is True:
-            create_lazy = self.static_templates.create_lazy
+            tmpl = self.static_templates.get_or_create
         elif static is False:
-            create_lazy = self.dynamic_templates.create_lazy
+            tmpl = self.dynamic_templates.get_or_create
+
+        return Query(
+            cast(Callable[[], ConnectionScope], self.conn),
+            self._mapper,
+            lambda: tmpl(content=content),
+        )
+
+    @overload
+    def transaction(
+        self,
+        fn: Callable[Params, Result],
+        /,
+        commit: bool = True,
+        **tx_kwargs: Any,
+    ) -> Callable[Params, Result]:
+        ...
+
+    @overload
+    def transaction(
+        self,
+        fn: None = None,
+        /,
+        commit: bool = True,
+        **tx_kwargs: Any,
+    ) -> Transaction:
+        ...
+
+    def transaction(
+        self,
+        fn: Callable[Params, Result] | None = None,
+        /,
+        commit: bool = True,
+        **tx_kwargs: Any,
+    ) -> Callable[Params, Result] | Transaction:
+        """
+        Метод имеет 2 применения - как контекстный менеджер и как декоратор.
+
+        При применении с with engine захватит соединение во внутреннем пуле
+        соединений, убедится в отключении autocommit.
+        При выходе из with вызовет conn.commit при commit=True, или rollback,
+        если commit=False, или если возникли исключения в блоке with.
+
+        При применении как декоратора вернет функцию-обертку, которая при вызове
+        обернет в with engine.connect декорируемую функцию.
+
+        Нужен для объявления границ транзакций.
+        """
+        if fn is None:
+            return self._tx_cls(self._pool, self.current, commit, tx_kwargs)
         else:
-            raise ValueError(f'Unknown "static" arg value: {static}')
+            @wraps(fn)
+            def wrapper(*args: Params.args, **kwargs: Params.kwargs) -> Result:
+                with self.transaction(commit=commit, **tx_kwargs):
+                    return fn(*args, **kwargs)
 
-        return Query(self, create_lazy(content=content))
+            return wrapper
 
-    @property
-    def cursor(self):
-        try:
-            return self.conn.cursor()
-        except AttributeError:
-            raise AttributeError('''
-                Trying to access cursor, while not in started state.
-                Maybe, you forgot to enter in engine ctx?:
-                >>> with engine:
-                ...     query.execute(...)
-            ''')
+    @overload
+    def conn(self, fn: Callable[Params, Result], /) -> Callable[Params, Result]:
+        ...
 
-    def transaction(self):
-        return Transaction(self.conn.__wrapped__)
+    @overload
+    def conn(self, fn: None = None, /) -> ConnectionScope:
+        ...
 
-    def __enter__(self):
-        self.conn.__enter__()
-        return self
-
-    def __exit__(
-            self,
-            type_: Optional[Type[BaseException]],
-            value: Optional[BaseException],
-            traceback: Optional[TracebackType],
-    ) -> Optional[bool]:
-        return self.conn.__exit__(type_, value, traceback)
-
-    def commit(self):
-        self.conn.commit()
-
-    def rollback(self):
-        self.conn.rollback()
-
-
-class Query:
-
-    def __init__(
+    def conn(
         self,
-        engine: Engine,
-        lazy_query,
-    ):
-        self.engine = engine
-        self._lazy_query = lazy_query
-
-    def map_to(
-        self,
-        result: Result,
-        prefix: Optional[str] = None,
+        fn: Callable[Params, Result] | None = None,
         /,
-        **params: Parameter,
-    ) -> 'MappedQuery[Result]':
-        if prefix is None:
-            if result is None:
-                raise ValueError('Prefix or result must be specified')
-            prefix_ = result.__name__.lower()
-        else:
-            prefix_ = prefix.lower()
-        mapping_ = create_mapping(**params) if params else self.engine.mapping
-        return MappedQuery[Result](
-            engine=self.engine,
-            lazy_query=self._lazy_query,
-            result=prefix_,
-            mapping=mapping_,
-        )
+    ) -> Callable[Params, Result] | ConnectionScope:
+        """
+        Метод имеет 2 применения - как контекстный менеджер и как декоратор.
 
-    def execute(
-        self,
-        params: QueryParams = None,
-        /,
-        cursor: Cursor = None,
-        **kwargs: Any,
-    ) -> Cursor:
-        if params is not None and not isinstance(params, (dict, tuple)):
-            params = params.__dict__
+        При применении с with engine захватит соединение во внутреннем пуле
+        соединений, и будет удерживать соединение до конца блока.
 
-        return self._lazy_query().execute(
-            params or kwargs,
-            cursor or self.engine.cursor,
-        )
+        При применении как декоратора вернет функцию-обертку, которая при вызове
+        обернет в with engine.connect декорируемую функцию.
 
-    def executemany(
-        self,
-        params: Iterable[QueryParams],
-        cursor: Cursor = None,
-    ) -> Cursor:
-        return self._lazy_query().executemany([
-            param
-            if isinstance(param, (dict, tuple))
-            else param.__dict__
-            for param in params
-        ], cursor or self.engine.cursor,)
+        Нужно для случаев, когда нужно сделать несколько запросов в одной операции подряд.
+        """
+        if fn is None:
+            return ConnectionScope(self._pool, self.current)
 
-    def all(
-        self,
-        params: QueryParams = None,
-        /,
-        cursor: Cursor = None,
-        **kwargs: Any,
-    ):
-        if params is None:
-            params = kwargs
-        else:
-            if not isinstance(params, (dict, tuple)):
-                params = params.__dict__
+        @wraps(fn)
+        def wrapper(*args: Params.args, **kwargs: Params.kwargs) -> Result:
+            with self.conn(None):
+                return fn(*args, **kwargs)
 
-        cursor = self._lazy_query().execute(
-            params,
-            cursor or self.engine.cursor,
-        )
-        return cursor.fetchall()
-
-    def iter(
-        self,
-        params: QueryParams = None,
-        /,
-        batch_: int = 500,
-        cursor_: Cursor = None,
-        **kwargs: Any,
-    ) -> Generator[Any, None, None]:
-        if params is not None and not isinstance(params, (dict, tuple)):
-            params = params.__dict__
-
-        cursor_ = self._lazy_query().execute(
-            params or kwargs,
-            cursor_ or self.engine.cursor,
-        )
-        while True:
-            batch = cursor_.fetchmany(batch_)
-            if not batch:
-                return
-            for row in batch:
-                yield row
-
-    def one(
-        self,
-        params: QueryParams = None,
-        /,
-        cursor_: Cursor = None,
-        **kwargs: Any,
-    ) -> Any:
-        if params is not None and not isinstance(params, (dict, tuple)):
-            params = params.__dict__
-
-        cursor_ = self._lazy_query().execute(
-            params or kwargs,
-            cursor_ or self.engine.cursor,
-        )
-        return cursor_.fetchone()
-
-    def scalar(
-        self,
-        params: QueryParams = None,
-        /,
-        raising_: bool = False,
-        cursor_: Cursor = None,
-        **kwargs: Any,
-    ) -> Any:
-        if params is not None and not isinstance(params, (dict, tuple)):
-            params = params.__dict__
-
-        row = self.one(
-            params or kwargs,
-            raising_=raising_,
-            cursor_=cursor_ or self.engine.cursor,
-        )
-        if not raising_ and row is None:
-            return None
-        return row[0]
-
-    def scalars(
-        self,
-        params: QueryParams = None,
-        /,
-        raising_: bool = False,
-        cursor_: Cursor = None,
-        **kwargs: Any,
-    ) -> Generator[Any, None, None]:
-        if params is not None and not isinstance(params, (dict, tuple)):
-            params = params.__dict__
-
-        return (
-            row[0] for row in self.iter(
-                params or kwargs,
-                raising_=raising_,
-                cursor_=cursor_ or self.engine.cursor,
-            )
-        )
-
-    def rowcount(
-        self,
-        params: QueryParams = None,
-        /,
-        cursor_: Cursor = None,
-        **kwargs: Any,
-    ) -> int:
-        """Количество строк, обработанных запросом"""
-
-        if params is not None and not isinstance(params, (dict, tuple)):
-            params = params.__dict__
-
-        cursor = self._lazy_query().execute(
-            params or kwargs,
-            cursor_ or self.engine.cursor,
-        )
-        return cursor.rowcount
-
-
-class MappedQuery(Generic[Result]):
-
-    def __init__(
-        self,
-        engine: Engine,
-        lazy_query,
-        result: str,
-        mapping: Mapping,
-    ) -> None:
-        self.engine = engine
-        self._lazy_query = lazy_query
-        self.result = result.lower()
-        self.mapping = mapping
-        self._mapper = None
-
-        # Alias for test simplicity
-        self._compile_mapper = compile_mapper_func
-
-    def mapper_func(self, cursor: Cursor) -> Callable[
-        [Iterable[Row]],
-        Generator[Any, Any, None]
-    ]:
-        columns = tuple(column[0] for column in cursor.description)
-        key = (self.result, self.mapping, columns)
-        mapper = self.engine.get_mapper_from_cache(key)
-        if not mapper:
-            mapper = self._compile_mapper(
-                self.result, self.mapping, columns,
-            )
-            self.engine.cache_mapper(key, mapper)
-        return mapper
-
-    def sources(
-        self,
-        params: QueryParams = None,
-        /,
-        cursor_: Cursor = None,
-        **kwargs: Any,
-    ) -> str:
-        if params is not None and not isinstance(params, (dict, tuple)):
-            params = params.__dict__
-
-        cursor = self._lazy_query().execute(
-            params or kwargs,
-            cursor_ or self.engine.cursor,
-        )
-        func = self.mapper_func(cursor)
-        return getattr(func, 'sources', lambda: '')()
-
-    def all(
-        self,
-        params: QueryParams = None,
-        /,
-        cursor_: Cursor = None,
-        **kwargs: Any,
-    ) -> List[Result]:
-        if params is not None and not isinstance(params, (dict, tuple)):
-            params = params.__dict__
-
-        return list(self.iter(params or kwargs, cursor_=cursor_))
-
-    def iter(
-        self,
-        params: QueryParams = None,
-        /,
-        batch: Optional[int] = 500,
-        cursor_: Cursor = None,
-        **kwargs: Any,
-    ) -> Generator[Result, None, None]:
-        if params is not None and not isinstance(params, (dict, tuple)):
-            params = params.__dict__
-
-        cursor_ = self._lazy_query().execute(
-            params or kwargs,
-            cursor_ or self.engine.cursor,
-        )
-        mapper = self.mapper_func(cursor_)
-
-        if batch:
-            fetch = partial(cursor_.fetchmany, batch)
-        else:
-            fetch = cursor_.fetchall
-
-        def rows_iter():
-            while True:
-                rows = fetch()
-                if not rows:
-                    return
-                for row in rows:
-                    yield row
-
-        for obj in mapper(rows_iter()):
-            yield obj
-
-    def one(
-        self,
-        params: QueryParams = None,
-        /,
-        batch: int = 500,
-        cursor_: Cursor = None,
-        **kwargs: Any,
-    ) -> Result:
-        if params is not None and not isinstance(params, (dict, tuple)):
-            params = params.__dict__
-
-        iterator = self.iter(
-            params or kwargs,
-            batch,
-            cursor_ or self.engine.cursor,
-        )
-        try:
-            result = next(iterator)
-        except StopIteration:
-            iterator.close()
-            result = None
-        return result
-
-
-T = TypeVar('T')
-
-@doublewrap
-def in_transaction(fn: T, prop: str = 'db') -> T:
-
-    @wraps(fn)
-    def wrapper(self, *args, **kwargs):
-        with getattr(self, prop).transaction():
-            return fn(self, *args, **kwargs)
-
-    return wrapper
+        return wrapper
