@@ -6,11 +6,41 @@ from ..transaction import Transaction
 
 class OracleDBTransaction(Transaction, driver=oracledb):
 
-    def _at_enter(self):
-        self._current.conn.autocommit = False
+    def _enable_params(self):
+        conn = self._current.conn
+        conn.autocommit = False
+        if level := self._params.get('level'):
+            level = level.upper()
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    f'SET TRANSACTION ISOLATION LEVEL {level}'
+                )
+            finally:
+                cursor.close()
 
-    def _at_exit(self):
-        self._current.conn.autocommit = True
+    def _restore_params(self):
+        pass
+
+    def _start_savepoint(self):
+        self._savepoint_name = f'sp_{id(self)}'
+        cursor = self._current.conn.cursor()
+        try:
+            cursor.execute(f'SAVEPOINT {self._savepoint_name}')
+        finally:
+            cursor.close()
+
+    def _release_savepoint(self):
+        # Oracle does not support RELEASE SAVEPOINT — implicitly released
+        # when the outer transaction commits or the connection closes
+        pass
+
+    def _rollback_savepoint(self):
+        cursor = self._current.conn.cursor()
+        try:
+            cursor.execute(f'ROLLBACK TO SAVEPOINT {self._savepoint_name}')
+        finally:
+            cursor.close()
 
 
 class OracleDBConnectionValidator(ConnectionValidator, driver=oracledb):
@@ -24,3 +54,10 @@ class OracleDBConnectionValidator(ConnectionValidator, driver=oracledb):
         except Exception:
             return False
         return True
+
+    def before_release(self, conn):
+        try:
+            conn.rollback()
+        except Exception:
+            return False
+        return self.validate(conn)
