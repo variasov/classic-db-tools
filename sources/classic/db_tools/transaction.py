@@ -12,6 +12,13 @@ class Transaction:
         Dict[ModuleType, Type['Transaction']]
     ] = {}
 
+    _conn_pool: ConnectionPool
+    _commit_on_exit: bool
+    _conn_scope: Optional[ConnectionScope]
+    _current: Scope
+    _params: Optional[Dict[str, Any]]
+    _first: Optional[bool]
+
     def __init_subclass__(cls, driver: ModuleType, **kwargs):
         super().__init_subclass__(**kwargs)
         cls.implementations[driver] = cls
@@ -42,6 +49,10 @@ class Transaction:
 
     def _release_savepoint(self):
         raise NotImplementedError
+
+    def _rollback_savepoint(self):
+        conn = cast(Connection, self._current.conn)
+        conn.rollback()
 
     def __enter__(self):
         if self._current.conn is None:
@@ -86,10 +97,17 @@ class Transaction:
                     else:
                         conn.rollback()
                 else:
-                    self._release_savepoint()
+                    if self._commit_on_exit:
+                        self._release_savepoint()
+                    else:
+                        self._rollback_savepoint()
             else:
-                conn.rollback()
-            self._restore_params()
+                if self._first:
+                    conn.rollback()
+                else:
+                    self._rollback_savepoint()
+            if self._first:
+                self._restore_params()
         finally:
             if self._first:
                 self._first = None

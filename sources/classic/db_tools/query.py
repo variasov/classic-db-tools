@@ -272,8 +272,10 @@ class Query:
     ) -> Any:
         cursor_ = self._tmpl_factory().execute(cursor, params)
         row = cursor_.fetchone()
-        if row is None and not raising:
-            return None
+        if row is None:
+            if not raising:
+                return None
+            raise IndexError('scalar query returned no rows')
         return row[0]
 
     def scalars(

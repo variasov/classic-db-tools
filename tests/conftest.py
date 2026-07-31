@@ -1,28 +1,61 @@
-import os.path
+import os
+import sqlite3
+
+import pytest
 
 from classic.db_tools import Engine
-import pytest
-import psycopg
+from classic.db_tools.pool import ConnectionPool
 
 
-SQL_DIR_PATH = os.path.join(os.path.dirname(__file__), 'sql')
+def connect():
+    return sqlite3.connect(':memory:')
 
 
 @pytest.fixture(scope='session')
 def engine():
     return Engine(
-        psycopg,
+        sqlite3, connect,
         templates_dirs=os.path.join(os.path.dirname(__file__), 'sql'),
+        pool_class=ConnectionPool,
     )
 
 
-@pytest.fixture(scope='function')
-def tx(engine: Engine):
+@pytest.fixture
+def standalone_engine():
+    return Engine(sqlite3, connect)
+
+
+@pytest.fixture(scope='session', autouse=True)
+def schema(engine):
+    with engine.conn():
+        engine.query(
+            'CREATE TABLE IF NOT EXISTS items '
+            '(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, value INT)',
+            static=True,
+        ).execute()
+        engine.query(
+            'CREATE TABLE IF NOT EXISTS _map_items '
+            '(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, value INT)',
+            static=True,
+        ).execute()
+        engine.query(
+            'CREATE TABLE IF NOT EXISTS _map_parents '
+            '(id INT PRIMARY KEY, name TEXT)',
+            static=True,
+        ).execute()
+        engine.query(
+            'CREATE TABLE IF NOT EXISTS _map_children '
+            '(id INTEGER PRIMARY KEY AUTOINCREMENT, parent_id INT, label TEXT)',
+            static=True,
+        ).execute()
+        engine.query(
+            'CREATE TABLE IF NOT EXISTS _map_tags '
+            '(id INTEGER PRIMARY KEY AUTOINCREMENT, parent_id INT, name TEXT)',
+            static=True,
+        ).execute()
+
+
+@pytest.fixture(autouse=True)
+def data(engine, schema):
     with engine.transaction(commit=False):
-        yield engine
-
-
-@pytest.fixture(scope='function')
-def ddl(engine: Engine, tx):
-    _ = tx  # for linting
-    yield engine.query_from('example/ddl.sql').execute()
+        yield

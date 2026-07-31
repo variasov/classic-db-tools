@@ -1,38 +1,53 @@
+from typing import TypedDict, cast
+
 import psycopg
 
-from ..transaction import Transaction
 from ..conn_validator import ConnectionValidator
+from ..transaction import Transaction
 
 
 UNKNOWN = psycopg.pq.TransactionStatus.UNKNOWN
 IDLE = psycopg.pq.TransactionStatus.IDLE
 
 
+class PsycopgTxParams(TypedDict):
+    readonly: bool
+    level: str
+    deferrable: bool
+
+
 class PsycopgTransaction(Transaction, driver=psycopg):
 
     def _enable_params(self):
-        conn: psycopg.Connection = self._current.conn
+        conn = cast(psycopg.Connection, self._current.conn)
 
         if conn.info.transaction_status != IDLE:
             conn.rollback()
 
+        self.old_autocommit = conn.autocommit
         conn.autocommit = False
 
-        if readonly := self._params.get('readonly'):
+        params = cast(PsycopgTxParams, self._params)
+        if readonly := params.get('readonly'):
             self.old_read_only = conn.read_only
             conn.read_only = readonly
 
-        if level := self._params.get('level'):
+        if level := params.get('level'):
             self.old_isolation_level = conn.isolation_level
+            if isinstance(level, str):
+                level = psycopg.IsolationLevel[level.upper()]
             conn.isolation_level = level
 
-        if deferrable := self._params.get('deferrable'):
+        if deferrable := params.get('deferrable'):
             self.old_deferrable = conn.deferrable
             conn.deferrable = deferrable
 
     def _restore_params(self):
-        conn: psycopg.Connection = self._current.conn
-        conn.autocommit = True
+        conn = cast(psycopg.Connection, self._current.conn)
+
+        old_autocommit = getattr(self, 'old_autocommit', None)
+        if old_autocommit is not None:
+            conn.autocommit = old_autocommit
 
         old_read_only = getattr(self, 'old_read_only', None)
         if old_read_only is not None:
@@ -47,10 +62,18 @@ class PsycopgTransaction(Transaction, driver=psycopg):
             conn.deferrable = old_deferrable
 
     def _start_savepoint(self):
-        pass
+        self._savepoint_name = f'savepoint_{id(self)}'
+        conn = cast(psycopg.Connection, self._current.conn)
+        conn.execute(f'SAVEPOINT {self._savepoint_name}')
 
     def _release_savepoint(self):
-        pass
+        conn = cast(psycopg.Connection, self._current.conn)
+        conn.execute(f'RELEASE SAVEPOINT {self._savepoint_name}')
+
+    def _rollback_savepoint(self):
+        conn = cast(psycopg.Connection, self._current.conn)
+        conn.execute(f'ROLLBACK TO SAVEPOINT {self._savepoint_name}')
+        conn.execute(f'RELEASE SAVEPOINT {self._savepoint_name}')
 
 
 class PsycopgConnectionValidator(ConnectionValidator, driver=psycopg):
@@ -59,6 +82,8 @@ class PsycopgConnectionValidator(ConnectionValidator, driver=psycopg):
         try:
             cur = conn.cursor()
             cur.execute('SELECT 1')
+            cur.fetchone()
+            cur.close()
         except Exception:
             return False
         return True
@@ -69,7 +94,8 @@ class PsycopgConnectionValidator(ConnectionValidator, driver=psycopg):
         status = conn.info.transaction_status
         if status == UNKNOWN:
             return False
-        elif status != IDLE:
+        try:
             conn.rollback()
-            return True
-        return True
+        except Exception:
+            return False
+        return self.validate(conn)
