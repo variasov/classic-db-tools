@@ -1,9 +1,0 @@
-SELECT
-    id,
-    name
-FROM tasks
-WHERE
-    -- Подумать над заменой, или более подробным тестированием
-    -- (%(name)s IS NULL OR name LIKE %(name)s)
-    {% if name %} name LIKE {{ name }} AND {% endif %}
-    TRUE;

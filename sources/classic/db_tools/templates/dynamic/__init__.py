@@ -3,9 +3,9 @@ from .cache import DynamicTemplatesCache
 from .renderer import Renderer
 from .extension import AutoBind
 
-__all__ = [
+__all__ = (
     'DynamicTemplate',
     'DynamicTemplatesCache',
     'Renderer',
     'AutoBind',
-]
+)

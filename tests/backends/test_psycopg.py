@@ -1,26 +1,66 @@
-import psycopg
+import os
+
 import pytest
 
-from classic.db_tools import ConnectionPool
-from classic.db_tools.pool import ConnectionLimitError
-from classic.db_tools.backends.psycopg import PsycopgConnectionValidator
+psycopg = pytest.importorskip('psycopg')
 
-from conftest import connect
+from classic.db_tools import Engine, ConnectionPool  # noqa: E402
+from classic.db_tools.pool import ConnectionLimitError  # noqa: E402
+from classic.db_tools.backends.psycopg import PsycopgConnectionValidator  # noqa: E402
 
 
-class TestConnectionPool:
+def connect():
+    return psycopg.connect(
+        dbname=os.environ.get('PGDBNAME', 'test'),
+        user=os.environ.get('PGUSER', 'test'),
+        password=os.environ.get('PGPASSWORD', 'test'),
+    )
 
-    def test_default_pool_on_engine(self, engine):
-        assert engine._pool is not None
-        assert isinstance(engine._pool, ConnectionPool)
 
-    def test_acquire_and_release(self, engine):
-        conn = engine._pool.acquire()
+@pytest.fixture
+def pg_engine():
+    return Engine(psycopg, connect)
+
+
+class TestPsycopgTransactionParams:
+
+    def test_readonly(self, pg_engine):
+        with pg_engine.transaction(readonly=True):
+            result = pg_engine.query(
+                'SELECT 1 AS a', static=True,
+            ).scalar()
+            assert result == 1
+
+    def test_isolation_level(self, pg_engine):
+        with pg_engine.transaction(level='serializable'):
+            result = pg_engine.query('SELECT 1', static=True).scalar()
+            assert result == 1
+
+    def test_deferrable(self, pg_engine):
+        with pg_engine.transaction(readonly=True, deferrable=True):
+            result = pg_engine.query('SELECT 1', static=True).scalar()
+            assert result == 1
+
+    def test_mismatched_params_raises(self, pg_engine):
+        with pg_engine.transaction(readonly=True):
+            with pytest.raises(AssertionError):
+                with pg_engine.transaction():
+                    pg_engine.query('SELECT 1', static=True).execute()
+
+
+class TestPsycopgConnectionPool:
+
+    def test_default_pool_on_engine(self, pg_engine):
+        assert pg_engine._pool is not None
+        assert isinstance(pg_engine._pool, ConnectionPool)
+
+    def test_acquire_and_release(self, pg_engine):
+        conn = pg_engine._pool.acquire()
         assert conn is not None
-        engine._pool.release(conn)
+        pg_engine._pool.release(conn)
 
-    def test_context_manager_wrapped_connection(self, engine):
-        with engine._pool.connect() as conn:
+    def test_context_manager_wrapped_connection(self, pg_engine):
+        with pg_engine._pool.connect() as conn:
             assert conn is not None
             conn.execute('SELECT 1')
 
@@ -58,7 +98,8 @@ class TestConnectionPool:
         pool = ConnectionPool(psycopg, connect)
         conn = pool.acquire()
         try:
-            conn.autocommit = False
+            conn.rollback()
+            conn.autocommit = False,
             conn.execute(
                 'CREATE TEMP TABLE IF NOT EXISTS _tmp_pool_test (id INT)',
             )
@@ -74,12 +115,6 @@ class TestConnectionPool:
         conn.close()
         reuse = pool.before_release(conn)
         assert reuse is False
-
-    def test_before_release_rejects_unknown_status(self):
-        pool = ConnectionPool(psycopg, connect)
-        conn = pool.acquire()
-        conn.close()
-        assert pool.before_release(conn) is False
 
     def test_unlimited_creates_new_on_empty_queue(self):
         pool = ConnectionPool(psycopg, connect, limit=0)

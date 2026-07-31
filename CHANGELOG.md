@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.1.0 (2026-07-31)
+
+### Добавлено
+
+- **Вложенные транзакции (Savepoint)**: реализована поддержка вложенных транзакций через SQL SAVEPOINT
+- **Поддержка SQLite**: добавлен backend `Sqlite3Transaction` и `Sqlite3ConnectionValidator` для работы с SQLite через модуль `sqlite3` (включая savepoint)
+
+---
+
 ## v3.0.0
 
 Крупный рефакторинг кодовой базы.

@@ -7,7 +7,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'classic-db-tools'
-version = '3.0.0'
+version = '3.1.0'
 authors = [
     {name = "Sergey Variasov", email = "variasov@gmail.com"},
 ]
@@ -46,7 +46,6 @@ criteria = [
 [dependency-groups]
 dev = [
     "ruff>=0.15.4",
-    "psycopg~=3.3",
     "pytest==9.0.2",
     "classic-criteria==0.2.1",
     "cosmic-ray",

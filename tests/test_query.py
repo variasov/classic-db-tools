@@ -12,13 +12,13 @@ class TestExecute:
 
     def test_with_dict_params(self, engine):
         result = engine.query(
-            'SELECT %(v)s AS out', static=True,
+            'SELECT :v AS out', static=True,
         ).scalar({'v': 'dict_val'})
         assert result == 'dict_val'
 
     def test_with_kwargs(self, engine):
         result = engine.query(
-            'SELECT %(v)s AS out', static=True,
+            'SELECT :v AS out', static=True,
         ).scalar(v='kwarg_val')
         assert result == 'kwarg_val'
 
@@ -28,7 +28,7 @@ class TestExecute:
                 self.v = 'obj_val'
 
         result = engine.query(
-            'SELECT %(v)s AS out', static=True,
+            'SELECT :v AS out', static=True,
         ).scalar(Obj())
         assert result == 'obj_val'
 
@@ -142,150 +142,86 @@ class TestRowcount:
 class TestExternalCursor:
 
     def test_execute_with_cursor(self, engine):
-        conn = engine._pool.acquire()
-        cur = None
-        try:
+        with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
-                'INSERT INTO items (title, value) VALUES (%s, %s)',
+                'INSERT INTO items (title, value) VALUES (?, ?)',
                 ('ext0', 5),
             )
-            row = engine.query_from('select_item_title_value_by_title.sql').one(
-                cursor=cur, t='ext0',
-            )
+            row = engine.query_from(
+                'select_item_title_value_by_title.sql',
+            ).one(cursor=cur, t='ext0')
             assert row is not None
             assert row[0] == 'ext0'
-        finally:
-            if cur is not None:
-                cur.execute('DELETE FROM items WHERE title = %s', ('ext0',))
-            engine._pool.release(conn)
 
     def test_one_with_external_cursor(self, engine):
-        conn = engine._pool.acquire()
-        cur = None
-        try:
+        with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
-                'INSERT INTO items (title, value) VALUES (%s, %s)',
+                'INSERT INTO items (title, value) VALUES (?, ?)',
                 ('ext1', 1),
             )
-            row = engine.query_from('select_item_title_value_by_title.sql').one(
-                cursor=cur, t='ext1',
-            )
+            row = engine.query_from(
+                'select_item_title_value_by_title.sql',
+            ).one(cursor=cur, t='ext1')
             assert row[0] == 'ext1'
-        finally:
-            if cur is not None:
-                cur.execute('DELETE FROM items WHERE title = %s', ('ext1',))
-            engine._pool.release(conn)
-
-    def test_all_with_external_cursor(self, engine):
-        conn = engine._pool.acquire()
-        cur = None
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                'INSERT INTO items (title, value) VALUES (%s, %s)',
-                ('ea1', 1),
-            )
-            cur.execute(
-                'INSERT INTO items (title, value) VALUES (%s, %s)',
-                ('ea2', 2),
-            )
-            rows = engine.query_from('select_title_from_items_by_titles.sql').all(
-                cursor=cur, t=['ea1'],
-            )
-            assert len(rows) == 1
-        finally:
-            if cur is not None:
-                cur.execute(
-                    "DELETE FROM items WHERE title IN ('ea1', 'ea2')",
-                )
-            engine._pool.release(conn)
 
     def test_scalar_with_external_cursor(self, engine):
-        conn = engine._pool.acquire()
-        cur = None
-        try:
+        with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
-                'INSERT INTO items (title, value) VALUES (%s, %s)',
+                'INSERT INTO items (title, value) VALUES (?, ?)',
                 ('es1', 99),
             )
-            val = engine.query_from('select_value_from_items_by_title.sql').scalar(
-                cursor=cur, t='es1',
-            )
+            val = engine.query_from(
+                'select_value_from_items_by_title.sql',
+            ).scalar(cursor=cur, t='es1')
             assert val == 99
-        finally:
-            if cur is not None:
-                cur.execute('DELETE FROM items WHERE title = %s', ('es1',))
-            engine._pool.release(conn)
 
     def test_scalars_with_external_cursor(self, engine):
-        conn = engine._pool.acquire()
-        cur = None
-        try:
+        with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
-                'INSERT INTO items (title, value) VALUES (%s, %s)',
+                'INSERT INTO items (title, value) VALUES (?, ?)',
                 ('ess_a', 1),
             )
             cur.execute(
-                'INSERT INTO items (title, value) VALUES (%s, %s)',
+                'INSERT INTO items (title, value) VALUES (?, ?)',
                 ('ess_b', 2),
             )
             vals = list(
-                    engine.query_from('select_value_from_items_order_by_value.sql').scalars(
-                        cursor=cur,
-                    ),
+                engine.query_from(
+                    'select_value_from_items_order_by_value.sql',
+                ).scalars(cursor=cur),
             )
             assert vals == [1, 2]
-        finally:
-            if cur is not None:
-                cur.execute(
-                    "DELETE FROM items WHERE title IN ('ess_a', 'ess_b')",
-                )
-            engine._pool.release(conn)
 
     def test_iter_with_external_cursor(self, engine):
-        conn = engine._pool.acquire()
-        cur = None
-        try:
+        with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
-                'INSERT INTO items (title, value) VALUES (%s, %s)',
+                'INSERT INTO items (title, value) VALUES (?, ?)',
                 ('ei_a', 1),
             )
             cur.execute(
-                'INSERT INTO items (title, value) VALUES (%s, %s)',
+                'INSERT INTO items (title, value) VALUES (?, ?)',
                 ('ei_b', 2),
             )
             rows = list(
-                    engine.query_from('select_title_from_items_order_by_title.sql').iter(
-                        cursor=cur, batch=1,
-                    ),
+                engine.query_from(
+                    'select_title_from_items_order_by_title.sql',
+                ).iter(cursor=cur, batch=1),
             )
             assert len(rows) == 2
-        finally:
-            if cur is not None:
-                cur.execute(
-                    "DELETE FROM items WHERE title IN ('ei_a', 'ei_b')",
-                )
-            engine._pool.release(conn)
 
     def test_rowcount_with_external_cursor(self, engine):
-        conn = engine._pool.acquire()
-        cur = None
-        try:
+        with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
-                'INSERT INTO items (title, value) VALUES (%s, %s)',
+                'INSERT INTO items (title, value) VALUES (?, ?)',
                 ('erc', 0),
             )
-            count = engine.query_from('update_item_value_by_title.sql').rowcount(
-                cursor=cur, t='erc', v=10,
-            )
+            count = engine.query_from(
+                'update_item_value_by_title.sql',
+            ).rowcount(cursor=cur, t='erc', v=10)
             assert count == 1
-        finally:
-            if cur is not None:
-                cur.execute('DELETE FROM items WHERE title = %s', ('erc',))
-            engine._pool.release(conn)

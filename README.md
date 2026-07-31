@@ -43,7 +43,7 @@ task = engine.query_from('tasks/get_by_id.sql').one(id=1)
 ```
 
 В директории sql рядом с .py файлом надо разместить 3 файла
-(можно найти в директории test/example):
+(можно найти в директории tests/sql):
 
 `sql/tasks/ddl.sql`:
 ```sql
@@ -126,11 +126,11 @@ from classic.db_tools import Engine, backends
 import psycopg
 
 engine = Engine(
-    # Драйвер БД (обязательный параметр)
-    driver=psycopg,
+    # Драйвер БД (обязательный позиционный параметр)
+    psycopg,
     
-    # Фабрика подключений (опциональный параметр)
-    factory=lambda: psycopg.connect(...),
+    # Фабрика подключений (опциональный позиционный параметр)
+    lambda: psycopg.connect(...),
     
     # Класс пула подключений (опциональный параметр)
     pool_class=ConnectionPool,
@@ -190,6 +190,7 @@ Classic DB Tools поддерживает следующие драйверы:
 | MS SQL Server | `pymssql` | `pip install pymssql` |
 | Oracle (новый) | `oracledb` | `pip install oracledb` |
 | Oracle (старый) | `cx_oracle` | `pip install cx_Oracle` |
+| SQLite | `sqlite3` | Встроен в стандартную библиотеку |
 
 Для каждого драйвера есть встроенный валидатор подключений и обработчик транзакций.
 При использовании неизвестного драйвера валидация отключается (параметр `validator=None`).
@@ -330,9 +331,9 @@ SELECT * FROM {{ table|identifier }}
 ```sql
 SELECT * FROM experiments."some_table"
 ```
-MS SQL Server использует `:
+MS SQL Server использует обратные кавычки:
 ```sql
-SELECT * FROM `public`.`some_table`
+SELECT * FROM [public].[some_table]
 ```
 
 Изменить это можно в параметре identifier_quote_char 
@@ -743,11 +744,10 @@ obj = engine.query_from('test.sql').map_to(Task, 'task').one()
 ```
 
 
-Если не подан result, а только prefix - prefix будет использован в качестве 
-префикса, но аннотаций типов уже не будет.
+Результат без конкретного класса:
 ```python
-obj = engine.query_from('test.sql').map_to('task').one()
-# obj - Any с точки зрения typing
+obj = engine.query_from('test.sql').map_to(object, 'task').one()
+# obj - object с точки зрения typing
 ```
 
 Третий вариант - передать маппинг через keyword-аргументы. В этом случае
