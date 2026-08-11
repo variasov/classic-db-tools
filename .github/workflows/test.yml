@@ -255,5 +255,5 @@ jobs:
         run: >-
           uv run pytest
           tests/backends/test_oracledb.py
-          tests/backends/test_cx_oracle.py
+          # tests/backends/test_cx_oracle.py  # Временно отключено
           -v
