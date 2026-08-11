@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from types import ModuleType
 from typing import Any, Callable, Optional, Union
 import threading
 import queue
 import logging
 
 from .conn_validator import ConnectionValidator
-
+from .dbapi import DBModule
 
 logger = logging.getLogger(__name__)
 
@@ -67,11 +66,12 @@ class ConnectionPool:
 
     def __init__(
         self,
-        driver: ModuleType,
+        driver: DBModule,
         connection_factory,
         timeout: float = 5.0,
         limit: int = 0,
         validator: Union[ConnectionValidator, str] = 'auto',
+        autocommit_setter: Optional[Callable] = None,
     ):
         self._pool = self.queue_class()
         self.driver = driver
@@ -95,6 +95,7 @@ class ConnectionPool:
         self.connections_created = 0
         self.reached_limit = False
         self.timeout = timeout
+        self._autocommit_setter = autocommit_setter
 
     def acquire(self) -> ConnType:
         if not self.validate:
@@ -137,6 +138,8 @@ class ConnectionPool:
 
     def _connect(self) -> ConnType:
         conn = self.connection_factory()  # type: ignore
+        if self._autocommit_setter is not None:
+            self._autocommit_setter(conn)
         self.connections_created += 1
         self.reached_limit = bool(
             self.limit and self.connections_created >= self.limit

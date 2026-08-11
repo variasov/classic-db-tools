@@ -1,3 +1,5 @@
+from typing import cast
+
 import pymssql
 
 from ..conn_validator import ConnectionValidator
@@ -7,18 +9,23 @@ from ..transaction import Transaction
 class PyMSSQLTransaction(Transaction, driver=pymssql):
     _DEFAULT_ISOLATION = 'READ COMMITTED'
 
+    @classmethod
+    def enable_autocommit(cls, conn):
+        pass
+
     def _enable_params(self):
         if level := self._params.get('level'):
-            level_str = str(level).upper().replace('_', ' ')
-            cursor = self._current.conn.cursor()
+            conn = cast(pymssql.Connection, self._current.conn)
+            cursor = conn.cursor()
             try:
-                cursor.execute(f'SET TRANSACTION ISOLATION LEVEL {level_str}')
+                cursor.execute(f'SET TRANSACTION ISOLATION LEVEL {level}')
             finally:
                 cursor.close()
 
     def _restore_params(self):
         if self._params.get('level'):
-            cursor = self._current.conn.cursor()
+            conn = cast(pymssql.Connection, self._current.conn)
+            cursor = conn.cursor()
             try:
                 cursor.execute(
                     f'SET TRANSACTION ISOLATION LEVEL {self._DEFAULT_ISOLATION}'
@@ -28,7 +35,8 @@ class PyMSSQLTransaction(Transaction, driver=pymssql):
 
     def _start_savepoint(self):
         self._savepoint_name = f'sp_{id(self)}'
-        cursor = self._current.conn.cursor()
+        conn = cast(pymssql.Connection, self._current.conn)
+        cursor = conn.cursor()
         try:
             cursor.execute(f'SAVE TRANSACTION {self._savepoint_name}')
         finally:
@@ -39,7 +47,8 @@ class PyMSSQLTransaction(Transaction, driver=pymssql):
 
     def _rollback_savepoint(self):
         # ROLLBACK TRANSACTION <name> rolls back to savepoint only, not the entire outer TX
-        cursor = self._current.conn.cursor()
+        conn = cast(pymssql.Connection, self._current.conn)
+        cursor = conn.cursor()
         try:
             cursor.execute(f'ROLLBACK TRANSACTION {self._savepoint_name}')
         finally:

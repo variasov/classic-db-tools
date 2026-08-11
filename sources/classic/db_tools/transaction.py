@@ -1,27 +1,31 @@
-from types import TracebackType, ModuleType
+from types import TracebackType
 from typing import Any, Optional, Type, ClassVar, Dict, cast
 
 from .pool import ConnectionPool
 from .conn_scope import ConnectionScope
 from .scope import Scope
-from .types import Connection
+from .dbapi import Connection, DBModule
 
 
 class Transaction:
     implementations: ClassVar[
-        Dict[ModuleType, Type['Transaction']]
+        Dict[DBModule, Type['Transaction']]
     ] = {}
 
     _conn_pool: ConnectionPool
     _commit_on_exit: bool
     _conn_scope: Optional[ConnectionScope]
     _current: Scope
-    _params: Optional[Dict[str, Any]]
+    _params: Dict[str, Any]
     _first: Optional[bool]
 
-    def __init_subclass__(cls, driver: ModuleType, **kwargs):
+    def __init_subclass__(cls, driver: DBModule, **kwargs):
         super().__init_subclass__(**kwargs)
         cls.implementations[driver] = cls
+
+    @classmethod
+    def enable_autocommit(cls, conn):
+        conn.autocommit = True
 
     def __init__(
             self,

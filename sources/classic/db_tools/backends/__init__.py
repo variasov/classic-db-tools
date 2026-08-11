@@ -33,5 +33,4 @@ try:
 except ImportError:
     pass
 
-from .sqlite3 import Sqlite3ConnectionValidator as Sqlite3ConnectionValidator  # noqa: F401
-from .sqlite3 import Sqlite3Transaction as Sqlite3Transaction  # noqa: F401
+from .sqlite3 import Sqlite3ConnectionValidator, Sqlite3Transaction  # noqa: F401

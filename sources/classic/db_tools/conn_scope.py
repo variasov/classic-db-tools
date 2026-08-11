@@ -3,7 +3,7 @@ from typing import Optional, Type, cast
 
 from .scope import Scope
 from .pool import ConnectionPool
-from .types import Connection
+from .dbapi import Connection
 
 
 class ConnectionScope:

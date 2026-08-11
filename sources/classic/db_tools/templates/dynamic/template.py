@@ -3,7 +3,7 @@ from typing import Any, Dict, Sequence
 
 import jinja2
 
-from classic.db_tools.types import Cursor
+from classic.db_tools.dbapi import Cursor
 
 from .renderer import Renderer
 

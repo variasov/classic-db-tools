@@ -2,10 +2,10 @@ from typing import Any
 
 from jinja2 import Environment
 
-from classic.criteria import Criteria, And, Or, Xor, Invert
+from classic.criteria import CriteriaNode, And, Or, Xor, Invert
 
 
-def traverse(criteria: Criteria[Any], translators) -> str:
+def traverse(criteria: CriteriaNode[Any], translators) -> str:
     if isinstance(criteria, And):
         return ' AND '.join((
             traverse(nested, translators)
@@ -28,7 +28,7 @@ def traverse(criteria: Criteria[Any], translators) -> str:
         return macro(criteria)
 
 
-def contains(criteria: Criteria[Any], *translators) -> bool:
+def contains(criteria: CriteriaNode[Any], *translators) -> bool:
     if isinstance(criteria, (And, Or)):
         return any((
             contains(nested, *translators)

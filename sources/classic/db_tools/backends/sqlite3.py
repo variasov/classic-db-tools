@@ -1,25 +1,24 @@
 import sqlite3
-from typing import Literal, cast, Union
+from typing import cast
 
 from ..conn_validator import ConnectionValidator
 from ..transaction import Transaction
 
 
 class Sqlite3Transaction(Transaction, driver=sqlite3):
-    _old_isolation_level: Union[
-        Literal["DEFERRED", "EXCLUSIVE", "IMMEDIATE"],
-        None,
-    ]
+
+    @classmethod
+    def enable_autocommit(cls, conn):
+        conn.isolation_level = None
 
     def _enable_params(self):
         conn = cast(sqlite3.Connection, self._current.conn)
-        self._old_isolation_level = conn.isolation_level
         conn.isolation_level = None
         conn.execute('BEGIN')
 
     def _restore_params(self):
         conn = cast(sqlite3.Connection, self._current.conn)
-        conn.isolation_level = self._old_isolation_level
+        conn.isolation_level = None
 
     def _start_savepoint(self):
         self._savepoint_name = f'savepoint_{id(self)}'

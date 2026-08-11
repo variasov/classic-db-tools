@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Sequence
 
-from classic.db_tools.types import Cursor
+from classic.db_tools.dbapi import Cursor
 
 
 class Template(ABC):

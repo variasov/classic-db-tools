@@ -1,6 +1,7 @@
 from typing import TypedDict, cast
 
 import psycopg
+from psycopg.sql import SQL
 
 from ..conn_validator import ConnectionValidator
 from ..transaction import Transaction
@@ -18,13 +19,16 @@ class PsycopgTxParams(TypedDict):
 
 class PsycopgTransaction(Transaction, driver=psycopg):
 
+    @classmethod
+    def enable_autocommit(cls, conn):
+        conn.autocommit = True
+
     def _enable_params(self):
         conn = cast(psycopg.Connection, self._current.conn)
 
         if conn.info.transaction_status != IDLE:
             conn.rollback()
 
-        self.old_autocommit = conn.autocommit
         conn.autocommit = False
 
         params = cast(PsycopgTxParams, self._params)
@@ -45,9 +49,7 @@ class PsycopgTransaction(Transaction, driver=psycopg):
     def _restore_params(self):
         conn = cast(psycopg.Connection, self._current.conn)
 
-        old_autocommit = getattr(self, 'old_autocommit', None)
-        if old_autocommit is not None:
-            conn.autocommit = old_autocommit
+        conn.autocommit = True
 
         old_read_only = getattr(self, 'old_read_only', None)
         if old_read_only is not None:
@@ -64,16 +66,24 @@ class PsycopgTransaction(Transaction, driver=psycopg):
     def _start_savepoint(self):
         self._savepoint_name = f'savepoint_{id(self)}'
         conn = cast(psycopg.Connection, self._current.conn)
-        conn.execute(f'SAVEPOINT {self._savepoint_name}')
+        conn.execute(
+            SQL('SAVEPOINT {}').format(self._savepoint_name),
+        )
 
     def _release_savepoint(self):
         conn = cast(psycopg.Connection, self._current.conn)
-        conn.execute(f'RELEASE SAVEPOINT {self._savepoint_name}')
+        conn.execute(
+            SQL('RELEASE SAVEPOINT {}').format(self._savepoint_name),
+        )
 
     def _rollback_savepoint(self):
         conn = cast(psycopg.Connection, self._current.conn)
-        conn.execute(f'ROLLBACK TO SAVEPOINT {self._savepoint_name}')
-        conn.execute(f'RELEASE SAVEPOINT {self._savepoint_name}')
+        conn.execute(
+            SQL('ROLLBACK TO {}').format(self._savepoint_name),
+        )
+        conn.execute(
+            SQL('RELEASE SAVEPOINT {}').format(self._savepoint_name),
+        )
 
 
 class PsycopgConnectionValidator(ConnectionValidator, driver=psycopg):

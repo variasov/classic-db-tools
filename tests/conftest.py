@@ -55,7 +55,7 @@ def schema(engine):
         ).execute()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def data(engine, schema):
     with engine.transaction(commit=False):
         yield

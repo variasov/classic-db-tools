@@ -4,7 +4,7 @@ from typing import (
     Callable, ContextManager, Sequence, Union, cast,
 )
 
-from ..types import Connection, Cursor, Row
+from ..dbapi import Connection, Cursor, Row
 from ..templates import Template
 
 from .mapper import Mapper
