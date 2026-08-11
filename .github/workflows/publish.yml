@@ -1,41 +1,48 @@
+---
 name: Publish Python package to PyPI
 
-on:
-  push:
+on:  # yamllint disable-line rule:truthy
+  workflow_run:
+    workflows:
+      - Tests
+    types:
+      - completed
     branches:
       - main
 
 jobs:
   build:
     name: Build distribution
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Install build tools
-      run: python -m pip install --upgrade pip build
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build
 
-    - name: Build sdist and wheel
-      run: python -m build
+      - name: Build sdist and wheel
+        run: python -m build
 
-    - name: Store the distribution packages
-      uses: actions/upload-artifact@v4
-      with:
-        name: python-package-distributions
-        path: dist/
+      - name: Store the distribution packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
 
   publish-to-pypi:
     name: Publish distribution to PyPI
     needs:
-    - build
+      - build
     runs-on: ubuntu-latest
 
     environment:
@@ -46,11 +53,11 @@ jobs:
       id-token: write
 
     steps:
-    - name: Download sdist
-      uses: actions/download-artifact@v4
-      with:
-        name: python-package-distributions
-        path: dist/
+      - name: Download sdist
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
 
-    - name: Publish distribution to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish distribution to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
