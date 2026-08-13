@@ -1,7 +1,10 @@
 from dataclasses import dataclass, field
 
+import pytest
 
 from classic.db_tools import Entity, Value, Append, Assign, Add
+
+pytestmark = pytest.mark.usefixtures('data')
 
 
 @dataclass

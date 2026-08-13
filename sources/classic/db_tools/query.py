@@ -4,7 +4,7 @@ from typing import (
 )
 
 from .mapping import Mapper, Result, Parameter, MapperQuery
-from .types import Row, Cursor
+from .dbapi import Row, Cursor
 from .templates import Template
 from .conn_scope import ConnectionScope
 

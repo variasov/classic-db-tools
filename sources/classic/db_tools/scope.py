@@ -1,7 +1,7 @@
 import threading
 from typing import Any, Dict
 
-from .types import Connection
+from .dbapi import Connection
 
 
 class Scope(threading.local):

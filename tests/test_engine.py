@@ -3,8 +3,9 @@ import sqlite3
 import types
 
 import pytest
-
 from classic.db_tools import Engine
+
+pytestmark = pytest.mark.usefixtures('data')
 
 
 def _connect():

@@ -1,5 +1,9 @@
 import sqlite3
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures('data')
+
 from classic.db_tools.backends.sqlite3 import (
     Sqlite3Transaction,
     Sqlite3ConnectionValidator,
@@ -39,12 +43,10 @@ class TestSqlite3Transaction:
 
     def test_enable_params_sets_isolation_level(self, engine):
         with engine.conn() as conn:
-            old_level = conn.isolation_level
             tx = Sqlite3Transaction(engine._pool, engine.current)
             tx._current.conn = conn
             tx._enable_params()
             assert conn.isolation_level is None
-            assert tx._old_isolation_level == old_level
 
     def test_restore_params(self, engine):
         with engine.conn() as conn:

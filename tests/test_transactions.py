@@ -1,5 +1,7 @@
 import pytest
 
+pytestmark = pytest.mark.usefixtures('data')
+
 
 class TestTransaction:
 

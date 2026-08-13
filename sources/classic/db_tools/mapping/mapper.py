@@ -7,7 +7,7 @@ from typing import (
 )
 import threading
 
-from classic.db_tools.types import Cursor
+from classic.db_tools.dbapi import Cursor
 
 from .params import (
     Parameter, Relationship, Assign, Append, Add,

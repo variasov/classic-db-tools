@@ -1,6 +1,6 @@
 from typing import Literal, TypeVar, Generator, Iterator, Type
 
-from ..types import Row
+from ..dbapi import Row
 
 
 Accessor = Literal['attr', 'item']

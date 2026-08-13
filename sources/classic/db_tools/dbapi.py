@@ -5,7 +5,7 @@ from typing import (
 
 
 Row = Tuple[Any, ...]
-CursorParams = Union[Dict[str, Any], Row]
+CursorParams = Union[Dict[str, Any], Row, None]
 CursorDescription = Sequence[Tuple[str, int, int, int, int, bool]]
 
 
@@ -16,7 +16,7 @@ class Cursor(Protocol):
     def execute(
             self,
             operation: str,
-            parameters: CursorParams,
+            parameters: CursorParams = None,
     ) -> None:
         ...
 
@@ -53,4 +53,11 @@ class Connection(Protocol):
         ...
 
     def cursor(self) -> Cursor:
+        ...
+
+
+class DBModule(Protocol):
+    paramstyle: str
+
+    def connect(self, *args: Any, **kwargs: Any) -> Any:
         ...

@@ -2,6 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures('data')
+
 
 class TestExecute:
 

@@ -88,7 +88,7 @@ class TestOracleDBConnectionPool:
         conn = pool.acquire()
         try:
             cursor = conn.cursor()
-            cursor.execute('INSERT INTO _pool_dirty_test (id) VALUES (1)')
+            cursor.execute('INSERT INTO "_pool_dirty_test" (id) VALUES (1)')
             cursor.close()
             reuse = pool.before_release(conn)
             assert reuse is True
@@ -132,8 +132,6 @@ class TestOracleDBTransactionIsolation:
 
 
 class TestOracleDBSavepoints:
-    # Oracle DDL causes an implicit COMMIT, so we use a pre-existing table.
-    # The table _sp_test must exist before these tests run.
 
     @pytest.fixture(autouse=True)
     def _setup_table(self, oracle_engine):
@@ -141,11 +139,7 @@ class TestOracleDBSavepoints:
             cursor = oracle_engine._pool.acquire().cursor()
             try:
                 cursor.execute(
-                    "BEGIN "
-                    "  EXECUTE IMMEDIATE 'CREATE TABLE _sp_test (id NUMBER)';"
-                    "EXCEPTION WHEN OTHERS THEN "
-                    "  IF SQLCODE != -955 THEN RAISE; END IF; "
-                    "END;"
+                    'CREATE TABLE "_sp_test" (id NUMBER)'
                 )
             finally:
                 cursor.close()
@@ -154,11 +148,7 @@ class TestOracleDBSavepoints:
             cursor = oracle_engine._pool.acquire().cursor()
             try:
                 cursor.execute(
-                    "BEGIN "
-                    "  EXECUTE IMMEDIATE 'DROP TABLE _sp_test';"
-                    "EXCEPTION WHEN OTHERS THEN "
-                    "  IF SQLCODE != -942 THEN RAISE; END IF; "
-                    "END;"
+                    'DROP TABLE "_sp_test"'
                 )
             finally:
                 cursor.close()
@@ -167,14 +157,14 @@ class TestOracleDBSavepoints:
         with oracle_engine.conn():
             with oracle_engine.transaction():
                 oracle_engine.query(
-                    'INSERT INTO _sp_test (id) VALUES (1)', static=True,
+                    'INSERT INTO "_sp_test" (id) VALUES (1)', static=True,
                 ).execute()
                 with oracle_engine.transaction():
                     oracle_engine.query(
-                        'INSERT INTO _sp_test (id) VALUES (2)', static=True,
+                        'INSERT INTO "_sp_test" (id) VALUES (2)', static=True,
                     ).execute()
             count = oracle_engine.query(
-                'SELECT COUNT(*) FROM _sp_test', static=True,
+                'SELECT COUNT(*) FROM "_sp_test"', static=True,
             ).scalar()
         assert count == 2
 
@@ -182,19 +172,19 @@ class TestOracleDBSavepoints:
         with oracle_engine.conn():
             with oracle_engine.transaction():
                 oracle_engine.query(
-                    'INSERT INTO _sp_test (id) VALUES (10)', static=True,
+                    'INSERT INTO "_sp_test" (id) VALUES (10)', static=True,
                 ).execute()
                 try:
                     with oracle_engine.transaction():
                         oracle_engine.query(
-                            'INSERT INTO _sp_test (id) VALUES (20)',
+                            'INSERT INTO "_sp_test" (id) VALUES (20)',
                             static=True,
                         ).execute()
                         raise RuntimeError('force rollback')
                 except RuntimeError:
                     pass
                 count = oracle_engine.query(
-                    'SELECT COUNT(*) FROM _sp_test', static=True,
+                    'SELECT COUNT(*) FROM "_sp_test"', static=True,
                 ).scalar()
         assert count == 1
 
@@ -208,11 +198,7 @@ class TestOracleDBIntegration:
                 cursor = oracle_engine._pool.acquire().cursor()
                 try:
                     cursor.execute(
-                        f"BEGIN "
-                        f"  EXECUTE IMMEDIATE 'CREATE TABLE {tbl} (id NUMBER)';"
-                        f"EXCEPTION WHEN OTHERS THEN "
-                        f"  IF SQLCODE != -955 THEN RAISE; END IF; "
-                        f"END;"
+                        f'CREATE TABLE "{tbl}" (id NUMBER)'
                     )
                 finally:
                     cursor.close()
@@ -222,11 +208,7 @@ class TestOracleDBIntegration:
                 cursor = oracle_engine._pool.acquire().cursor()
                 try:
                     cursor.execute(
-                        f"BEGIN "
-                        f"  EXECUTE IMMEDIATE 'DROP TABLE {tbl}';"
-                        f"EXCEPTION WHEN OTHERS THEN "
-                        f"  IF SQLCODE != -942 THEN RAISE; END IF; "
-                        f"END;"
+                        f'DROP TABLE "{tbl}"'
                     )
                 finally:
                     cursor.close()
@@ -235,10 +217,10 @@ class TestOracleDBIntegration:
         with oracle_engine.conn():
             with oracle_engine.transaction():
                 oracle_engine.query(
-                    'INSERT INTO _full_tx (id) VALUES (1)', static=True,
+                    'INSERT INTO "_full_tx" (id) VALUES (1)', static=True,
                 ).execute()
             result = oracle_engine.query(
-                'SELECT id FROM _full_tx', static=True,
+                'SELECT id FROM "_full_tx"', static=True,
             ).scalar()
         assert result == 1
 
@@ -246,10 +228,10 @@ class TestOracleDBIntegration:
         with oracle_engine.conn():
             with oracle_engine.transaction(commit=False):
                 oracle_engine.query(
-                    'INSERT INTO _full_rb (id) VALUES (1)', static=True,
+                    'INSERT INTO "_full_rb" (id) VALUES (1)', static=True,
                 ).execute()
             result = oracle_engine.query(
-                'SELECT id FROM _full_rb', static=True,
+                'SELECT id FROM "_full_rb"', static=True,
             ).scalar()
         assert result is None
 
@@ -257,14 +239,14 @@ class TestOracleDBIntegration:
         with oracle_engine.conn():
             with oracle_engine.transaction():
                 oracle_engine.query(
-                    'INSERT INTO _nest_commit (id) VALUES (1)', static=True,
+                    'INSERT INTO "_nest_commit" (id) VALUES (1)', static=True,
                 ).execute()
                 with oracle_engine.transaction():
                     oracle_engine.query(
-                        'INSERT INTO _nest_commit (id) VALUES (2)', static=True,
+                        'INSERT INTO "_nest_commit" (id) VALUES (2)', static=True,
                     ).execute()
             result = oracle_engine.query(
-                'SELECT COUNT(*) FROM _nest_commit', static=True,
+                'SELECT COUNT(*) FROM "_nest_commit"', static=True,
             ).scalar()
         assert result == 2
 
@@ -272,17 +254,17 @@ class TestOracleDBIntegration:
         with oracle_engine.conn():
             with oracle_engine.transaction():
                 oracle_engine.query(
-                    'INSERT INTO _nest_rb (id) VALUES (1)', static=True,
+                    'INSERT INTO "_nest_rb" (id) VALUES (1)', static=True,
                 ).execute()
                 try:
                     with oracle_engine.transaction():
                         oracle_engine.query(
-                            'INSERT INTO _nest_rb (id) VALUES (2)', static=True,
+                            'INSERT INTO "_nest_rb" (id) VALUES (2)', static=True,
                         ).execute()
                         raise RuntimeError('inner fail')
                 except RuntimeError:
                     pass
             result = oracle_engine.query(
-                'SELECT COUNT(*) FROM _nest_rb', static=True,
+                'SELECT COUNT(*) FROM "_nest_rb"', static=True,
             ).scalar()
         assert result == 1

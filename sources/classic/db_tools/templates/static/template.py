@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, Sequence
 
-from classic.db_tools.types import Cursor, CursorParams
+from classic.db_tools.dbapi import Cursor, CursorParams
 
 from ..template import Template
 

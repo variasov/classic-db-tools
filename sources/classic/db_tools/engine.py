@@ -1,7 +1,6 @@
 from functools import wraps
 import logging
 from os import PathLike
-from types import ModuleType
 from typing import (
     Dict, TypeVar, Any, ParamSpec, Union, Sequence,
     Callable, Optional, Type, cast, overload,
@@ -17,7 +16,7 @@ from .conn_scope import ConnectionScope
 from .scope import Scope
 from .query import Query
 from .templates import StaticTemplatesCache, DynamicTemplatesCache
-
+from .dbapi import DBModule
 
 Params = ParamSpec('Params')
 Result = TypeVar('Result')
@@ -61,10 +60,9 @@ class Engine:
     _pool_cls: Type[ConnectionPool]
     _logger: logging.Logger
 
-
     def __init__(
         self,
-        driver: ModuleType,
+        driver: DBModule,
         factory: Optional[Callable[[], Any]] = None,
         /,
         templates_dirs: Optional[Union[
@@ -118,9 +116,12 @@ class Engine:
             self._factory = factory
 
         self._pool_cls = pool_class
-        self._pool = pool_class(driver, self._factory, **(pool_kwargs or {}))
-
         self._tx_cls = Transaction.implementations[self.driver]
+        self._pool = pool_class(
+            driver, self._factory,
+            autocommit_setter=self._tx_cls.enable_autocommit,
+            **(pool_kwargs or {}),
+        )
 
         self._logger = logger or logging.getLogger('classic-db-tools')
 
