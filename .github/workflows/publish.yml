@@ -2,24 +2,18 @@
 name: Publish Python package to PyPI
 
 on:  # yamllint disable-line rule:truthy
-  workflow_run:
-    workflows:
-      - Tests
-    types:
-      - completed
+  push:
     branches:
       - main
 
 jobs:
   build:
     name: Build distribution
-    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
       - name: Set up Python
