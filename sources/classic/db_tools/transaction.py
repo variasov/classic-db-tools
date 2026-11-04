@@ -92,32 +92,49 @@ class Transaction:
             value: Optional[BaseException],
             traceback: Optional[TracebackType],
     ) -> Optional[bool]:
+        conn = cast(Connection, self._current.conn)
+        first = self._first
+        exc_info = (type_, value, traceback)
         try:
-            conn = cast(Connection, self._current.conn)
-            if type_ is None:
-                if self._first:
-                    if self._commit_on_exit:
-                        conn.commit()
-                    else:
+            try:
+                if type_ is not None:
+                    if first:
                         conn.rollback()
-                else:
-                    if self._commit_on_exit:
-                        self._release_savepoint()
                     else:
                         self._rollback_savepoint()
-            else:
-                if self._first:
-                    conn.rollback()
+                elif self._commit_on_exit:
+                    if first:
+                        conn.commit()
+                    else:
+                        self._release_savepoint()
                 else:
-                    self._rollback_savepoint()
-            if self._first:
-                self._restore_params()
+                    if first:
+                        conn.rollback()
+                    else:
+                        self._rollback_savepoint()
+            except BaseException as exc:
+                exc_info = (type(exc), exc, exc.__traceback__)
+                if first and type_ is None:
+                    # Commit failed: the original error matters more
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                raise
+            finally:
+                if first:
+                    try:
+                        self._restore_params()
+                    except Exception:
+                        if exc_info[0] is None:
+                            raise
         finally:
-            if self._first:
+            if first:
                 self._first = None
                 self._current.tx_params = None
 
             if self._conn_scope:
-                self._conn_scope.__exit__(type_, value, traceback)
+                scope, self._conn_scope = self._conn_scope, None
+                scope.__exit__(*exc_info)
 
-            return False
+        return False

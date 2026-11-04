@@ -1,4 +1,8 @@
+import sqlite3
+
 import pytest
+
+from classic.db_tools import Engine
 
 pytestmark = pytest.mark.usefixtures('data')
 
@@ -198,3 +202,76 @@ class TestConn:
             return 99
 
         assert work() == 99
+
+
+class TestCommitFailure:
+
+    @pytest.fixture
+    def fk_engine(self, tmp_path):
+        path = str(tmp_path / 'fk.db')
+
+        def connect():
+            conn = sqlite3.connect(path)
+            conn.execute('PRAGMA foreign_keys = ON')
+            return conn
+
+        eng = Engine(sqlite3, connect)
+        with eng.transaction():
+            eng.query(
+                'CREATE TABLE parent (id INTEGER PRIMARY KEY)',
+                static=True,
+            ).execute()
+            eng.query(
+                'CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id '
+                'INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY '
+                'DEFERRED)',
+                static=True,
+            ).execute()
+        return eng
+
+    @staticmethod
+    def _insert_child(eng, id_, parent_id):
+        eng.query(
+            'INSERT INTO child (id, parent_id) VALUES (:i, :p)',
+            static=True,
+        ).execute(i=id_, p=parent_id)
+
+    @staticmethod
+    def _count(eng):
+        return eng.query(
+            'SELECT count(*) FROM child', static=True,
+        ).scalar()
+
+    def test_commit_error_propagates(self, fk_engine):
+        with pytest.raises(sqlite3.IntegrityError):
+            with fk_engine.transaction():
+                self._insert_child(fk_engine, 1, 999)
+
+        assert self._count(fk_engine) == 0
+
+    def test_engine_usable_after_failure(self, fk_engine):
+        with pytest.raises(sqlite3.IntegrityError):
+            with fk_engine.transaction():
+                self._insert_child(fk_engine, 1, 999)
+
+        with fk_engine.transaction():
+            fk_engine.query(
+                'INSERT INTO parent (id) VALUES (1)', static=True,
+            ).execute()
+            self._insert_child(fk_engine, 1, 1)
+
+        assert self._count(fk_engine) == 1
+
+    def test_failure_inside_outer_conn(self, fk_engine):
+        with fk_engine.conn():
+            with pytest.raises(sqlite3.IntegrityError):
+                with fk_engine.transaction():
+                    self._insert_child(fk_engine, 1, 999)
+
+            with fk_engine.transaction():
+                fk_engine.query(
+                    'INSERT INTO parent (id) VALUES (1)', static=True,
+                ).execute()
+                self._insert_child(fk_engine, 2, 1)
+
+            assert self._count(fk_engine) == 1
