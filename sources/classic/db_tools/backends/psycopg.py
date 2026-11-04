@@ -1,7 +1,7 @@
 from typing import TypedDict, cast
 
 import psycopg
-from psycopg.sql import SQL
+from psycopg.sql import SQL, Identifier
 
 from ..conn_validator import ConnectionValidator
 from ..transaction import Transaction
@@ -67,22 +67,26 @@ class PsycopgTransaction(Transaction, driver=psycopg):
         self._savepoint_name = f'savepoint_{id(self)}'
         conn = cast(psycopg.Connection, self._current.conn)
         conn.execute(
-            SQL('SAVEPOINT {}').format(self._savepoint_name),
+            SQL('SAVEPOINT {}').format(Identifier(self._savepoint_name)),
         )
 
     def _release_savepoint(self):
         conn = cast(psycopg.Connection, self._current.conn)
         conn.execute(
-            SQL('RELEASE SAVEPOINT {}').format(self._savepoint_name),
+            SQL('RELEASE SAVEPOINT {}').format(
+                Identifier(self._savepoint_name),
+            ),
         )
 
     def _rollback_savepoint(self):
         conn = cast(psycopg.Connection, self._current.conn)
         conn.execute(
-            SQL('ROLLBACK TO {}').format(self._savepoint_name),
+            SQL('ROLLBACK TO {}').format(Identifier(self._savepoint_name)),
         )
         conn.execute(
-            SQL('RELEASE SAVEPOINT {}').format(self._savepoint_name),
+            SQL('RELEASE SAVEPOINT {}').format(
+                Identifier(self._savepoint_name),
+            ),
         )
 
 

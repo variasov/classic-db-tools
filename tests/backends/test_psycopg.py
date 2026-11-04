@@ -11,6 +11,8 @@ from classic.db_tools.backends.psycopg import PsycopgConnectionValidator  # noqa
 
 def connect():
     return psycopg.connect(
+        host=os.environ.get('PGHOST', 'localhost'),
+        port=int(os.environ.get('PGPORT', '5432')),
         dbname=os.environ.get('PGDBNAME', 'test'),
         user=os.environ.get('PGUSER', 'test'),
         password=os.environ.get('PGPASSWORD', 'test'),
@@ -46,6 +48,87 @@ class TestPsycopgTransactionParams:
             with pytest.raises(AssertionError):
                 with pg_engine.transaction():
                     pg_engine.query('SELECT 1', static=True).execute()
+
+
+TABLE = 'dbtools_l3_items'
+
+
+@pytest.fixture
+def items(pg_engine):
+    pg_engine.query(
+        f'DROP TABLE IF EXISTS {TABLE}', static=True,
+    ).execute()
+    pg_engine.query(
+        f'CREATE TABLE {TABLE} (title TEXT)', static=True,
+    ).execute()
+    yield pg_engine
+    pg_engine.query(
+        f'DROP TABLE IF EXISTS {TABLE}', static=True,
+    ).execute()
+
+
+def _add(engine, title):
+    engine.query(
+        f"INSERT INTO {TABLE} (title) VALUES ('{title}')", static=True,
+    ).execute()
+
+
+def _titles(engine):
+    rows = engine.query(
+        f'SELECT title FROM {TABLE} ORDER BY title', static=True,
+    ).all()
+    return [row[0] for row in rows]
+
+
+class TestPsycopgNestedTransaction:
+
+    def test_nested_commits_with_outer(self, items):
+        with items.transaction():
+            _add(items, 'outer')
+            with items.transaction():
+                _add(items, 'inner')
+        assert _titles(items) == ['inner', 'outer']
+
+    def test_inner_error_rolls_back_only_inner(self, items):
+        with items.transaction():
+            _add(items, 'outer')
+            try:
+                with items.transaction():
+                    _add(items, 'inner')
+                    raise RuntimeError('inner fail')
+            except RuntimeError:
+                pass
+        assert _titles(items) == ['outer']
+
+    def test_inner_commit_false_rolls_back_only_inner(self, items):
+        with items.transaction():
+            _add(items, 'outer')
+            with items.transaction(commit=False):
+                _add(items, 'inner')
+        assert _titles(items) == ['outer']
+
+    def test_outer_rollback_rolls_back_inner(self, items):
+        try:
+            with items.transaction():
+                _add(items, 'outer')
+                with items.transaction():
+                    _add(items, 'inner')
+                raise RuntimeError('outer fail')
+        except RuntimeError:
+            pass
+        assert _titles(items) == []
+
+    def test_work_after_inner_rollback(self, items):
+        with items.transaction():
+            _add(items, 'outer')
+            try:
+                with items.transaction():
+                    _add(items, 'inner')
+                    raise RuntimeError('inner fail')
+            except RuntimeError:
+                pass
+            _add(items, 'after')
+        assert _titles(items) == ['after', 'outer']
 
 
 class TestPsycopgConnectionPool:
