@@ -3,28 +3,53 @@ from typing import Any
 from jinja2 import Environment
 
 from classic.criteria import CriteriaNode, And, Or, Xor, Invert
+from classic.criteria.criteria import ReturnsFalse, ReturnsTrue
 
 
 def traverse(criteria: CriteriaNode[Any], translators) -> str:
+    """
+    Транслирует дерево критериев в SQL-условие.
+
+    Каждый вложенный узел и каждый лист оборачивается в скобки, поэтому
+    приоритет операций всегда соответствует структуре дерева.
+    """
     if isinstance(criteria, And):
-        return ' AND '.join((
-            traverse(nested, translators)
+        if not criteria.nested:
+            return '1=1'
+        return ' AND '.join(
+            '({})'.format(traverse(nested, translators))
             for nested in criteria.nested
-        ))
+        )
     elif isinstance(criteria, Or):
-        return ' OR '.join((
-            traverse(nested, translators)
+        if not criteria.nested:
+            return '1=0'
+        return ' OR '.join(
+            '({})'.format(traverse(nested, translators))
             for nested in criteria.nested
-        ))
+        )
     elif isinstance(criteria, Xor):
-        return ' XOR '.join((
-            traverse(criteria.left, translators),
-            traverse(criteria.right, translators),
-        ))
+        # XOR есть не во всех СУБД (нет в PostgreSQL и SQLite),
+        # поэтому раскрываем: (A AND NOT B) OR (NOT A AND B).
+        left = traverse(criteria.left, translators)
+        right = traverse(criteria.right, translators)
+        return (
+            '((({0}) AND NOT ({1})) OR (NOT ({0}) AND ({1})))'
+        ).format(left, right)
     elif isinstance(criteria, Invert):
-        return 'NOT {}'.format(traverse(criteria.nested, translators))
+        return 'NOT ({})'.format(traverse(criteria.nested, translators))
+    elif isinstance(criteria, ReturnsTrue):
+        return '1=1'
+    elif isinstance(criteria, ReturnsFalse):
+        return '1=0'
     else:
-        macro = translators.__dict__[criteria.__class__.__name__]
+        name = criteria.__class__.__name__
+        macro = getattr(translators, name, None)
+        if not callable(macro):
+            raise LookupError(
+                'No macro "{}" for criteria {} in translators'.format(
+                    name, name,
+                )
+            )
         return macro(criteria)
 
 
