@@ -3,8 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from classic.criteria import And, Criteria, Or
-from classic.criteria.criteria import ReturnsFalse, ReturnsTrue
+from classic.criteria import And, Criteria, Or, ReturnsFalse, ReturnsTrue
 from classic.db_tools.templates.dynamic.criteria_macro import traverse
 
 

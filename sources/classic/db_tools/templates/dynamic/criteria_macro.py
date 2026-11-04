@@ -2,8 +2,9 @@ from typing import Any
 
 from jinja2 import Environment
 
-from classic.criteria import CriteriaNode, And, Or, Xor, Invert
-from classic.criteria.criteria import ReturnsFalse, ReturnsTrue
+from classic.criteria import (
+    And, CriteriaNode, Invert, Or, ReturnsFalse, ReturnsTrue, Xor,
+)
 
 
 def traverse(criteria: CriteriaNode[Any], translators) -> str:

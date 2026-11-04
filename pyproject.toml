@@ -41,7 +41,7 @@ namespaces = true
 
 [project.optional-dependencies]
 criteria = [
-    "classic-criteria~=0.1",
+    "classic-criteria~=1.0",
 ]
 oracledb = [
     "oracledb~=4.0",
@@ -70,6 +70,6 @@ pymysql = [
 dev = [
     "ruff>=0.15.4",
     "pytest==9.0.2",
-    "classic-criteria==0.2.1",
+    "classic-criteria~=1.0",
     "psycopg[binary]~=3.3",
 ]
