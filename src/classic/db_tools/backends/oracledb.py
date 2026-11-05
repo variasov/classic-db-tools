@@ -1,4 +1,4 @@
-from typing import cast
+from typing import Any
 
 import oracledb
 
@@ -8,11 +8,11 @@ from classic.db_tools.transaction import Transaction
 
 class OracleDBTransaction(Transaction, driver=oracledb):
     @classmethod
-    def enable_autocommit(cls, conn):
+    def enable_autocommit(cls, conn: Any) -> None:
         conn.autocommit = True
 
-    def _enable_params(self):
-        conn = cast("oracledb.Connection", self._current.conn)
+    def _enable_params(self) -> None:
+        conn: Any = self._current.conn
         conn.autocommit = False
         if level := self._params.get("level"):
             cursor = conn.cursor()
@@ -21,26 +21,26 @@ class OracleDBTransaction(Transaction, driver=oracledb):
             finally:
                 cursor.close()
 
-    def _restore_params(self):
-        conn = cast("oracledb.Connection", self._current.conn)
+    def _restore_params(self) -> None:
+        conn: Any = self._current.conn
         conn.autocommit = True
 
-    def _start_savepoint(self):
+    def _start_savepoint(self) -> None:
         self._savepoint_name = f"sp_{id(self)}"
-        conn = cast("oracledb.Connection", self._current.conn)
+        conn: Any = self._current.conn
         cursor = conn.cursor()
         try:
             cursor.execute(f"SAVEPOINT {self._savepoint_name}")
         finally:
             cursor.close()
 
-    def _release_savepoint(self):
+    def _release_savepoint(self) -> None:
         # Oracle does not support RELEASE SAVEPOINT — implicitly released
         # when the outer transaction commits or the connection closes
         pass
 
-    def _rollback_savepoint(self):
-        conn = cast("oracledb.Connection", self._current.conn)
+    def _rollback_savepoint(self) -> None:
+        conn: Any = self._current.conn
         cursor = conn.cursor()
         try:
             cursor.execute(f"ROLLBACK TO SAVEPOINT {self._savepoint_name}")
@@ -49,19 +49,19 @@ class OracleDBTransaction(Transaction, driver=oracledb):
 
 
 class OracleDBConnectionValidator(ConnectionValidator, driver=oracledb):
-    def validate(self, conn):
+    def validate(self, conn: Any) -> bool:
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM DUAL")
             cursor.fetchone()
             cursor.close()
-        except Exception:
+        except Exception:  # любая ошибка = соединение негодно
             return False
         return True
 
-    def before_release(self, conn):
+    def before_release(self, conn: Any) -> bool:
         try:
             conn.rollback()
-        except Exception:
+        except Exception:  # любая ошибка = соединение негодно
             return False
         return self.validate(conn)

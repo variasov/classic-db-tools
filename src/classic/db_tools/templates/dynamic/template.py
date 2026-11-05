@@ -23,7 +23,7 @@ class DynamicTemplate(Template):
         renderer: Renderer,
         template: jinja2.Template,
         param_style: str,
-    ):
+    ) -> None:
         self.logger = logger
         self.renderer = renderer
         self.template = template
@@ -31,9 +31,9 @@ class DynamicTemplate(Template):
 
     def execute(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         params: dict[str, Any],
-    ) -> Cursor:
+    ) -> Cursor[Any]:
         sql, ordered_params = self.renderer.prepare_query(
             self.template,
             params,
@@ -45,9 +45,9 @@ class DynamicTemplate(Template):
 
     def executemany(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         params: Sequence[dict[str, Any]],
-    ) -> Cursor:
+    ) -> Cursor[Any]:
         for param in params:
             sql, ordered_params = self.renderer.prepare_query(
                 self.template,

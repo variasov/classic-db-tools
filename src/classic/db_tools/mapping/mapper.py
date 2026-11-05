@@ -16,6 +16,7 @@ from .params import (
     Append,
     Assign,
     Entity,
+    Factory,
     Mapping,
     Parameter,
     Relationship,
@@ -34,18 +35,21 @@ COLUMN = 1
 
 
 class Mapper:
-    def __init__(self, mapping: Mapping):
-        self._cache = {}
+    def __init__(self, mapping: Mapping) -> None:
+        self._cache: dict[
+            tuple[str, Mapping, tuple[str, ...]],
+            MapperFunc[Any],
+        ] = {}
         self._lock = threading.RLock()
         self._mapping = mapping
         self._compile_mapper_func = compile_mapper_func
 
     def func_for_cursor(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         mapping: Mapping,
         result: str,
-    ) -> MapperFunc:
+    ) -> MapperFunc[Any]:
         columns = tuple(column[0] for column in cursor.description)
         key = (result, mapping or self._mapping, columns)
 
@@ -75,7 +79,7 @@ class Context:
         result: str,
         mapping: Mapping,
         columns: tuple[Column, ...],
-    ):
+    ) -> None:
         self.mapper = {}
         self.rels = defaultdict(dict)
         self.result = ResultParam(result, mapping[result])
@@ -94,7 +98,7 @@ class Context:
         except TypeError:
             return "item"
 
-    def namespace(self):
+    def namespace(self) -> dict[str, Factory]:
         return {
             mapper.factory.__name__: mapper.factory
             for mapper in self.mapper.values()
@@ -104,7 +108,7 @@ class Context:
         self,
         columns: tuple[Column, ...],
         mapping: Mapping,
-    ):
+    ) -> None:
         self.columns = columns
         for index_, column in enumerate(columns):
             try:
@@ -137,7 +141,7 @@ def compile_mapper_func(
     result: str,
     mapper: Mapping,
     columns: tuple[Column, ...],
-) -> MapperFunc:
+) -> MapperFunc[Any]:
     ctx = Context(result, mapper, columns)
 
     # Mapping class_name: Class
@@ -150,12 +154,12 @@ def compile_mapper_func(
     code = compile(ast_module, "<string>", "exec")
     exec(code, namespace)
 
-    func = namespace["mapper_func"]
+    func: Any = namespace["mapper_func"]
 
     # Add source code to func for easy debugging
     func.sources = lambda: ast.unparse(ast_module)
 
-    return cast("MapperFunc", func)
+    return cast("MapperFunc[Any]", func)
 
 
 def render_identity_maps(ctx: Context) -> Iterable[ast.stmt]:
@@ -349,7 +353,7 @@ def render_rel_factory_call(
         if accessor == "item":
             if isinstance(rel, Append):
                 default = ast.List([], ast.Load())
-            elif isinstance(rel, Add):
+            else:  # Add
                 default = ast.Set([])
 
             yield ast.If(
@@ -646,7 +650,7 @@ def render_value(
     value: Value,
 ) -> ast.stmt:
     columns = [col_[INDEX] for col_ in ctx.fields_to_columns[prefix].values()]
-    if_body = []
+    if_body: list[ast.stmt] = []
     if value.reduce_none:
         if_body.append(
             ast.If(

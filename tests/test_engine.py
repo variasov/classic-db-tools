@@ -1,6 +1,7 @@
 import logging
 import sqlite3
 import types
+from typing import Any
 
 import pytest
 
@@ -9,28 +10,30 @@ from classic.db_tools import Engine
 pytestmark = pytest.mark.usefixtures("data")
 
 
-def _connect():
+def _connect() -> sqlite3.Connection:
     return sqlite3.connect(":memory:")
 
 
 class TestEngineConstructor:
-    def test_default_uses_driver_connect(self, standalone_engine):
+    def test_default_uses_driver_connect(self, standalone_engine: Engine[Any]):
         assert standalone_engine._factory is not None
         assert standalone_engine._pool is not None
 
     def test_rejects_driver_without_connect(self):
         fake = types.ModuleType("fake")
         with pytest.raises(AssertionError):
-            Engine(fake)
+            # намеренно неверный драйвер: проверяем runtime-assert
+            Engine(fake)  # pyright: ignore[reportArgumentType]
 
     def test_rejects_non_callable_factory(self):
         with pytest.raises(AssertionError):
-            Engine(sqlite3, "not_callable")
+            # намеренно неверная фабрика: проверяем runtime-assert
+            Engine(sqlite3, "not_callable")  # pyright: ignore[reportCallIssue, reportArgumentType]  # noqa: E501
 
     def test_custom_factory(self):
-        calls = []
+        calls: list[int] = []
 
-        def factory():
+        def factory() -> sqlite3.Connection:
             calls.append(1)
             return _connect()
 
@@ -75,18 +78,18 @@ class TestEngineConstructor:
 
 
 class TestEngineQuery:
-    def test_static_query(self, engine):
+    def test_static_query(self, engine: Engine[Any]):
         result = engine.query("SELECT 1 AS num", static=True).scalar()
         assert result == 1
 
-    def test_dynamic_query(self, engine):
+    def test_dynamic_query(self, engine: Engine[Any]):
         result = engine.query(
             "SELECT {{ x }} AS num",
             static=False,
         ).scalar(x=42)
         assert result == 42
 
-    def test_static_by_default(self, standalone_engine):
+    def test_static_by_default(self, standalone_engine: Engine[Any]):
         eng = Engine(
             sqlite3,
             _connect,
@@ -96,7 +99,7 @@ class TestEngineQuery:
             result = eng.query("SELECT 1").scalar()
         assert result == 1
 
-    def test_dynamic_query_uses_jinja(self, engine):
+    def test_dynamic_query_uses_jinja(self, engine: Engine[Any]):
         result = engine.query(
             "SELECT {{ val }} AS out",
             static=False,
@@ -105,12 +108,12 @@ class TestEngineQuery:
 
 
 class TestEngineQueryFrom:
-    def test_static_from_file(self, engine):
+    def test_static_from_file(self, engine: Engine[Any]):
         engine.query_from("insert_item.sql").execute(t="qff1", v=1)
         row = engine.query_from("get_by_id.sql").one(id=1)
         assert row is not None
 
-    def test_dynamic_from_file(self, engine):
+    def test_dynamic_from_file(self, engine: Engine[Any]):
         engine.query_from("insert_item.sql").execute(t="qff2", v=10)
         engine.query_from("insert_item.sql").execute(t="qff3", v=30)
         rows = engine.query_from("filter_by_value.sql.tmpl").all(
@@ -119,21 +122,21 @@ class TestEngineQueryFrom:
         assert len(rows) == 1
         assert rows[0][2] == 30
 
-    def test_raises_on_unknown_extension(self, engine):
+    def test_raises_on_unknown_extension(self, engine: Engine[Any]):
         with pytest.raises(
             ValueError,
             match="Unsupported filename extension",
         ):
             engine.query_from("data.txt")
 
-    def test_raises_on_missing_file(self, engine):
+    def test_raises_on_missing_file(self, engine: Engine[Any]):
         q = engine.query_from("nonexistent.sql")
         with pytest.raises(FileNotFoundError):
             q._tmpl_factory()
 
 
 class TestEngineConn:
-    def test_context_manager(self, engine):
+    def test_context_manager(self, engine: Engine[Any]):
         with engine.conn():
             result = engine.query(
                 "SELECT 10 AS val",
@@ -141,7 +144,7 @@ class TestEngineConn:
             ).scalar()
         assert result == 10
 
-    def test_multiple_queries_share_connection(self, engine):
+    def test_multiple_queries_share_connection(self, engine: Engine[Any]):
         with engine.conn():
             engine.query_from("insert_item.sql").execute(t="cm1", v=1)
             row = engine.query_from(
@@ -149,7 +152,7 @@ class TestEngineConn:
             ).one(t="cm1")
             assert row is not None
 
-    def test_as_decorator(self, engine):
+    def test_as_decorator(self, engine: Engine[Any]):
         call_count = 0
 
         @engine.conn
@@ -163,7 +166,7 @@ class TestEngineConn:
 
 
 class TestEngineTransaction:
-    def test_commits_on_success(self, standalone_engine):
+    def test_commits_on_success(self, standalone_engine: Engine[Any]):
         with standalone_engine.transaction():
             standalone_engine.query(
                 "CREATE TABLE _tx_comm (id INT)",
@@ -180,7 +183,7 @@ class TestEngineTransaction:
             ).scalar()
             assert result == 1
 
-    def test_rollback_on_exception(self, standalone_engine):
+    def test_rollback_on_exception(self, standalone_engine: Engine[Any]):
         with standalone_engine.transaction():
             standalone_engine.query(
                 "CREATE TABLE _tx_rb (id INT)",
@@ -202,7 +205,7 @@ class TestEngineTransaction:
             ).scalar()
             assert result is None
 
-    def test_commit_false_rolls_back(self, standalone_engine):
+    def test_commit_false_rolls_back(self, standalone_engine: Engine[Any]):
         with standalone_engine.transaction():
             standalone_engine.query(
                 "CREATE TABLE _tx_nc (id INT)",
@@ -220,7 +223,7 @@ class TestEngineTransaction:
             ).scalar()
             assert result is None
 
-    def test_as_decorator(self, standalone_engine):
+    def test_as_decorator(self, standalone_engine: Engine[Any]):
         call_count = 0
 
         @standalone_engine.transaction
@@ -234,7 +237,7 @@ class TestEngineTransaction:
 
     def test_nested_transactions_create_savepoint(
         self,
-        standalone_engine,
+        standalone_engine: Engine[Any],
     ):
         with standalone_engine.transaction():
             standalone_engine.query(
@@ -256,7 +259,7 @@ class TestEngineTransaction:
             ).scalar()
             assert result == 2
 
-    def test_nested_rollback_to_savepoint(self, standalone_engine):
+    def test_nested_rollback_to_savepoint(self, standalone_engine: Engine[Any]):
         with standalone_engine.transaction():
             standalone_engine.query(
                 "CREATE TABLE _tx_nrb (id INT)",
@@ -281,7 +284,7 @@ class TestEngineTransaction:
             ).scalar()
             assert result == 1
 
-    def test_nested_decorator(self, standalone_engine):
+    def test_nested_decorator(self, standalone_engine: Engine[Any]):
 
         @standalone_engine.transaction
         def outer():
@@ -313,38 +316,38 @@ class TestEngineTransaction:
 
 
 class TestEngineCache:
-    def test_string_cache_reuses_template(self, engine):
+    def test_string_cache_reuses_template(self, engine: Engine[Any]):
         t1 = engine.query("SELECT 1", static=True)._tmpl_factory()
         t2 = engine.query("SELECT 1", static=True)._tmpl_factory()
         assert t1 is t2
 
-    def test_file_cache_reuses_template(self, engine):
+    def test_file_cache_reuses_template(self, engine: Engine[Any]):
         t1 = engine.query_from("get_all.sql")._tmpl_factory()
         t2 = engine.query_from("get_all.sql")._tmpl_factory()
         assert t1 is t2
 
-    def test_different_content_different_instances(self, engine):
+    def test_different_content_different_instances(self, engine: Engine[Any]):
         t1 = engine.query("SELECT 1", static=True)._tmpl_factory()
         t2 = engine.query("SELECT 2", static=True)._tmpl_factory()
         assert t1 is not t2
 
 
 class TestEngineFilters:
-    def test_bind_filter(self, engine):
+    def test_bind_filter(self, engine: Engine[Any]):
         result = engine.query(
             "SELECT {{ x }} AS out",
             static=False,
         ).scalar(x=99)
         assert result == 99
 
-    def test_sqlsafe_filter(self, engine):
+    def test_sqlsafe_filter(self, engine: Engine[Any]):
         result = engine.query(
             "SELECT {{ expr|sqlsafe }} AS out",
             static=False,
         ).scalar(expr="1 + 2")
         assert result == 3
 
-    def test_inclause_filter(self, engine):
+    def test_inclause_filter(self, engine: Engine[Any]):
         result = engine.query(
             "SELECT * FROM ("
             "  SELECT 1 AS v UNION ALL SELECT 2 UNION ALL SELECT 3"
@@ -353,7 +356,7 @@ class TestEngineFilters:
         ).all(vals=[1, 3])
         assert len(result) == 2
 
-    def test_identifier_filter(self, engine):
+    def test_identifier_filter(self, engine: Engine[Any]):
         result = engine.query(
             "SELECT 1 AS {{ col|identifier }}",
             static=False,

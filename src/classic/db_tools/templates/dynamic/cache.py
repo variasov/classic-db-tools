@@ -28,10 +28,10 @@ class DynamicTemplatesCache:
     def __init__(
         self,
         logger: logging.Logger,
-        templates_paths: Sequence[str | PathLike],
+        templates_paths: Sequence[str | PathLike[str]],
         paramstyle: str,
         identifier_quote_char: str | None = None,
-    ):
+    ) -> None:
         self.identifier_quote_char = identifier_quote_char or '"'
         self.paramstyle = paramstyle
 
@@ -56,7 +56,7 @@ class DynamicTemplatesCache:
         if register_criteria_macro is not None:
             register_criteria_macro(self.jinja)
 
-        self.cache = {}
+        self.cache: dict[str, DynamicTemplate] = {}
         self.lock = threading.RLock()
         self.logger = logger
 

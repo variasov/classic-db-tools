@@ -16,10 +16,10 @@ class StaticTemplatesCache:
     def __init__(
         self,
         logger: logging.Logger,
-        templates_paths: Sequence[str | os.PathLike],
-    ):
+        templates_paths: Sequence[str | os.PathLike[str]],
+    ) -> None:
         self.logger = logger
-        self.cache = {}
+        self.cache: dict[str, StaticTemplate] = {}
         self.templates_paths = templates_paths
         self.lock = threading.RLock()
 

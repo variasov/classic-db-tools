@@ -1,4 +1,4 @@
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 import psycopg
 from psycopg.sql import SQL, Identifier
@@ -18,11 +18,11 @@ class PsycopgTxParams(TypedDict):
 
 class PsycopgTransaction(Transaction, driver=psycopg):
     @classmethod
-    def enable_autocommit(cls, conn):
+    def enable_autocommit(cls, conn: Any) -> None:
         conn.autocommit = True
 
-    def _enable_params(self):
-        conn = cast("psycopg.Connection", self._current.conn)
+    def _enable_params(self) -> None:
+        conn = cast("psycopg.Connection[Any]", self._current.conn)
 
         if conn.info.transaction_status != IDLE:
             conn.rollback()
@@ -34,7 +34,8 @@ class PsycopgTransaction(Transaction, driver=psycopg):
             self.old_read_only = conn.read_only
             conn.read_only = readonly
 
-        if level := params.get("level"):
+        level: Any = params.get("level")
+        if level:
             self.old_isolation_level = conn.isolation_level
             if isinstance(level, str):
                 level = psycopg.IsolationLevel[level.upper()]
@@ -44,8 +45,8 @@ class PsycopgTransaction(Transaction, driver=psycopg):
             self.old_deferrable = conn.deferrable
             conn.deferrable = deferrable
 
-    def _restore_params(self):
-        conn = cast("psycopg.Connection", self._current.conn)
+    def _restore_params(self) -> None:
+        conn = cast("psycopg.Connection[Any]", self._current.conn)
 
         conn.autocommit = True
 
@@ -61,23 +62,23 @@ class PsycopgTransaction(Transaction, driver=psycopg):
         if old_deferrable is not None:
             conn.deferrable = old_deferrable
 
-    def _start_savepoint(self):
+    def _start_savepoint(self) -> None:
         self._savepoint_name = f"savepoint_{id(self)}"
-        conn = cast("psycopg.Connection", self._current.conn)
+        conn = cast("psycopg.Connection[Any]", self._current.conn)
         conn.execute(
             SQL("SAVEPOINT {}").format(Identifier(self._savepoint_name)),
         )
 
-    def _release_savepoint(self):
-        conn = cast("psycopg.Connection", self._current.conn)
+    def _release_savepoint(self) -> None:
+        conn = cast("psycopg.Connection[Any]", self._current.conn)
         conn.execute(
             SQL("RELEASE SAVEPOINT {}").format(
                 Identifier(self._savepoint_name),
             ),
         )
 
-    def _rollback_savepoint(self):
-        conn = cast("psycopg.Connection", self._current.conn)
+    def _rollback_savepoint(self) -> None:
+        conn = cast("psycopg.Connection[Any]", self._current.conn)
         conn.execute(
             SQL("ROLLBACK TO {}").format(Identifier(self._savepoint_name)),
         )
@@ -89,17 +90,17 @@ class PsycopgTransaction(Transaction, driver=psycopg):
 
 
 class PsycopgConnectionValidator(ConnectionValidator, driver=psycopg):
-    def validate(self, conn):
+    def validate(self, conn: Any) -> bool:
         try:
             cur = conn.cursor()
             cur.execute("SELECT 1")
             cur.fetchone()
             cur.close()
-        except Exception:
+        except Exception:  # любая ошибка = соединение негодно
             return False
         return True
 
-    def before_release(self, conn: psycopg.Connection):
+    def before_release(self, conn: psycopg.Connection[Any]) -> bool:
         if conn.closed:
             return False
         status = conn.info.transaction_status
@@ -107,6 +108,6 @@ class PsycopgConnectionValidator(ConnectionValidator, driver=psycopg):
             return False
         try:
             conn.rollback()
-        except Exception:
+        except Exception:  # любая ошибка = соединение негодно
             return False
         return self.validate(conn)

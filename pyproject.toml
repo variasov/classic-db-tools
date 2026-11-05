@@ -39,6 +39,9 @@ Homepage = "https://github.com/variasov/classic-db-tools"
 where = ['src']
 namespaces = true
 
+[tool.setuptools.package-data]
+"classic.db_tools" = ["py.typed"]
+
 [project.optional-dependencies]
 criteria = [
     "classic-criteria~=1.0",
@@ -122,16 +125,11 @@ ignore = [
     "FBT001",   # boolean positional parameters are public API
     "FBT002",   # boolean positional defaults are public API
     "FBT003",   # boolean positional values in calls follow public API
-    "ARG001",   # unused arguments of protocol stubs/overrides/fixtures
-    "ARG002",   # unused arguments of protocol stubs/overrides must be kept
-    "ARG005",   # unused lambda arguments in callbacks with fixed signature
+    "ANN401",   # Any is deliberate: driver rows, query params, driver args
     "PLR0913",  # Engine/ConnectionPool signatures are public API
-    "BLE001",   # connection validators/cleanup intentionally catch anything
-    "S101",     # asserts are internal invariants; changing alters errors
     "S102",     # exec is used by the mapper code generator
     "S704",     # Markup is used deliberately for SQL-safe fragments
-    "S110",     # best-effort cleanup intentionally swallows errors
-    "TRY002",   # raised exception types are public behavior
+    "TRY002",  # raised exception types are public behavior
     "TRY004",   # ValueError -> TypeError would alter public behavior
     "TRY301",   # raise inside try is intentional in transaction code/tests
     "B904",     # exception chaining would alter traceback behavior
@@ -142,14 +140,35 @@ ignore = [
     "PGH003",   # blanket type: ignore is handled in the typing step (L5)
     "SIM105",   # try/except ImportError/cleanup is kept explicit
     "SIM117",   # nested with kept for readability in tests
-    "ANN",      # TEMPORARY: removed in the typing step (L5)
     "D1",       # TEMPORARY: removed in the docstrings step
     "D2",       # TEMPORARY: removed in the docstrings step
     "D4",       # TEMPORARY: removed in the docstrings step
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"src/classic/db_tools/backends/*.py" = [
+    "BLE001",   # connection validators: any error means a broken connection
+]
+"src/classic/db_tools/conn_validator.py" = [
+    "BLE001",   # connection validators: any error means a broken connection
+]
+"src/classic/db_tools/detached_cursor.py" = [
+    "ARG002",   # arguments of cursor protocol stubs that always raise
+]
+"src/classic/db_tools/engine.py" = [
+    "S101",     # asserts are internal invariants; changing alters errors
+]
+"src/classic/db_tools/transaction.py" = [
+    "S101",     # asserts are internal invariants; changing alters errors
+]
+"src/classic/db_tools/templates/**/*.py" = [
+    "S101",     # asserts are internal invariants; changing alters errors
+]
 "tests/**" = [
+    "ANN",      # test annotations are optional
+    "ARG001",   # fixtures requested only for their side effects
+    "ARG002",   # fixtures requested only for their side effects
+    "ARG005",   # lambdas with a fixed callback signature
     "S101",     # `assert` is idiomatic in pytest
     "SLF001",   # tests access private members
     "PLR2004",  # magic values are acceptable in assertions

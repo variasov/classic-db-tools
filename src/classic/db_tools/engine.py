@@ -5,6 +5,7 @@ from os import PathLike
 from pathlib import Path
 from typing import (
     Any,
+    Generic,
     ParamSpec,
     TypeVar,
     cast,
@@ -14,7 +15,7 @@ from typing import (
 from frozendict import frozendict
 
 from .conn_scope import ConnectionScope
-from .dbapi import DBModule
+from .dbapi import Connection, DBModule, RowT
 from .mapping import Mapper, Parameter
 from .pool import ConnectionPool
 from .query import Query
@@ -25,8 +26,10 @@ from .transaction import Transaction
 Params = ParamSpec("Params")
 Result = TypeVar("Result")
 
+PathsT = str | PathLike[str]
 
-class Engine:
+
+class Engine(Generic[RowT]):
     """
     Точка входа в библиотеку.
 
@@ -56,7 +59,6 @@ class Engine:
 
     current: Scope
 
-    _templates_dirs: Sequence[str | PathLike]
     _tx_cls: type[Transaction]
     _mapper: Mapper
     _factory: Callable[[], Any]
@@ -64,12 +66,42 @@ class Engine:
     _pool_cls: type[ConnectionPool]
     _logger: logging.Logger
 
+    @overload
+    def __init__(
+        self: "Engine[Any]",
+        driver: DBModule,
+        factory: None = None,
+        /,
+        templates_dirs: PathsT | Sequence[PathsT] | None = None,
+        str_templates_static_by_default: bool = False,
+        identifier_quote_char: str | None = None,
+        default_mapping: dict[str, Parameter] | None = None,
+        pool_class: type[ConnectionPool] = ConnectionPool,
+        pool_kwargs: dict[str, Any] | None = None,
+        logger: logging.Logger | None = None,
+    ) -> None: ...
+
+    @overload
     def __init__(
         self,
         driver: DBModule,
-        factory: Callable[[], Any] | None = None,
+        factory: Callable[[], Connection[RowT]],
         /,
-        templates_dirs: str | PathLike | Sequence[str | PathLike] | None = None,
+        templates_dirs: PathsT | Sequence[PathsT] | None = None,
+        str_templates_static_by_default: bool = False,
+        identifier_quote_char: str | None = None,
+        default_mapping: dict[str, Parameter] | None = None,
+        pool_class: type[ConnectionPool] = ConnectionPool,
+        pool_kwargs: dict[str, Any] | None = None,
+        logger: logging.Logger | None = None,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        driver: DBModule,
+        factory: Callable[[], Connection[RowT]] | None = None,
+        /,
+        templates_dirs: PathsT | Sequence[PathsT] | None = None,
         str_templates_static_by_default: bool = False,
         identifier_quote_char: str | None = None,
         default_mapping: dict[str, Parameter] | None = None,
@@ -117,6 +149,7 @@ class Engine:
         assert hasattr(driver, "connect")
         self.driver = driver
 
+        self._factory: Callable[[], Any]
         if factory is None:
             self._factory = driver.connect
         else:
@@ -138,6 +171,7 @@ class Engine:
 
         self._mapper = Mapper(frozendict(default_mapping or {}))
 
+        self.templates_paths: Sequence[PathsT]
         if templates_dirs is None:
             self.templates_paths = []
         elif isinstance(templates_dirs, str):
@@ -164,7 +198,7 @@ class Engine:
             templates_paths=self.templates_paths,
         )
 
-    def query_from(self, filename: str) -> Query:
+    def query_from(self, filename: str) -> Query[RowT]:
         """
         Возвращает объект-запрос с шаблоном SQL, содержащимя по указанному пути.
 
@@ -193,7 +227,11 @@ class Engine:
             lambda: tmpl(filename=filename),
         )
 
-    def query(self, content: str, static: bool | None = None) -> Query:
+    def query(
+        self,
+        content: str,
+        static: bool | None = None,
+    ) -> Query[RowT]:
         """
         Возвращает объект-запрос с указанным шаблоном SQL.
 

@@ -1,4 +1,4 @@
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 import psycopg2
 
@@ -14,7 +14,8 @@ class ConnInfo(Protocol):
     transaction_status: int
 
 
-class Psycopg2Connection(Connection, Protocol):
+class Psycopg2Connection(Connection[Any], Protocol):
+    autocommit: bool
     isolation_level: str
     info: ConnInfo
 
@@ -23,10 +24,10 @@ class Psycopg2Connection(Connection, Protocol):
 
 class Psycopg2Transaction(Transaction, driver=psycopg2):
     @classmethod
-    def enable_autocommit(cls, conn):
+    def enable_autocommit(cls, conn: Any) -> None:
         conn.autocommit = True
 
-    def _enable_params(self):
+    def _enable_params(self) -> None:
         conn = cast("Psycopg2Connection", self._current.conn)
         if conn.info.transaction_status != TRANSACTION_STATUS_IDLE:
             conn.rollback()
@@ -35,13 +36,13 @@ class Psycopg2Transaction(Transaction, driver=psycopg2):
             self._old_isolation_level = conn.isolation_level
             conn.set_session(isolation_level=level.upper())
 
-    def _restore_params(self):
+    def _restore_params(self) -> None:
         conn = cast("Psycopg2Connection", self._current.conn)
         conn.autocommit = True
         if hasattr(self, "_old_isolation_level"):
             conn.set_session(isolation_level=self._old_isolation_level)
 
-    def _start_savepoint(self):
+    def _start_savepoint(self) -> None:
         self._savepoint_name = f"sp_{id(self)}"
         conn = cast("Psycopg2Connection", self._current.conn)
         cursor = conn.cursor()
@@ -50,7 +51,7 @@ class Psycopg2Transaction(Transaction, driver=psycopg2):
         finally:
             cursor.close()
 
-    def _release_savepoint(self):
+    def _release_savepoint(self) -> None:
         conn = cast("Psycopg2Connection", self._current.conn)
         cursor = conn.cursor()
         try:
@@ -58,7 +59,7 @@ class Psycopg2Transaction(Transaction, driver=psycopg2):
         finally:
             cursor.close()
 
-    def _rollback_savepoint(self):
+    def _rollback_savepoint(self) -> None:
         conn = cast("Psycopg2Connection", self._current.conn)
         cursor = conn.cursor()
         try:
@@ -69,17 +70,17 @@ class Psycopg2Transaction(Transaction, driver=psycopg2):
 
 
 class Psycopg2ConnectionValidator(ConnectionValidator, driver=psycopg2):
-    def validate(self, conn):
+    def validate(self, conn: Any) -> bool:
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
             cursor.fetchone()
             cursor.close()
-        except Exception:
+        except Exception:  # любая ошибка = соединение негодно
             return False
         return True
 
-    def before_release(self, conn):
+    def before_release(self, conn: Any) -> bool:
         if conn.closed:
             return False
         status = conn.info.transaction_status
@@ -87,6 +88,6 @@ class Psycopg2ConnectionValidator(ConnectionValidator, driver=psycopg2):
             return False
         try:
             conn.rollback()
-        except Exception:
+        except Exception:  # любая ошибка = соединение негодно
             return False
         return self.validate(conn)

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 from classic.criteria import (
     And,
@@ -12,7 +12,10 @@ from classic.criteria import (
 from jinja2 import Environment
 
 
-def traverse(criteria: CriteriaNode[Any], translators) -> str:
+def traverse(
+    criteria: CriteriaNode[Any],
+    translators: Any,  # объект с макросами из Jinja
+) -> str:
     """
     Транслирует дерево критериев в SQL-условие.
 
@@ -56,10 +59,13 @@ def traverse(criteria: CriteriaNode[Any], translators) -> str:
         raise LookupError(
             f'No macro "{name}" for criteria {name} in translators'
         )
-    return macro(criteria)
+    return cast("str", macro(criteria))
 
 
-def contains(criteria: CriteriaNode[Any], *translators) -> bool:
+def contains(
+    criteria: CriteriaNode[Any],
+    *translators: Any,  # имена или объекты-макросы из Jinja
+) -> bool:
     if isinstance(criteria, (And, Or)):
         return any(contains(nested, *translators) for nested in criteria.nested)
     if isinstance(criteria, Xor):
@@ -75,8 +81,10 @@ def contains(criteria: CriteriaNode[Any], *translators) -> bool:
     return False
 
 
-def register_criteria_macro(env: Environment):
-    env.globals.update(
+def register_criteria_macro(env: Environment) -> None:
+    # jinja2 типизирует globals узким объединением, поэтому приводим к Any
+    globals_ = cast("dict[str, Any]", env.globals)
+    globals_.update(
         {
             "traverse": traverse,
             "contains": contains,

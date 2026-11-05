@@ -1,6 +1,7 @@
 import re
 import threading
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from typing import Any, cast
 
 from jinja2 import Template
 from markupsafe import Markup
@@ -18,7 +19,7 @@ class Renderer(threading.local):
     param_style: str
     param_index: int
 
-    def _auto_name(self, base):
+    def _auto_name(self, base: str | None) -> str:
         """Уникальное имя параметра: очищенный base + порядковый номер."""
         base = re.sub(r"[^A-Za-z0-9_]", "_", base or "") or "param"
         name = f"{base}_{self.param_index}"
@@ -26,7 +27,12 @@ class Renderer(threading.local):
             name += "_"
         return name
 
-    def _bind_param(self, value, name=None, auto=True):
+    def _bind_param(
+        self,
+        value: Any,  # значение параметра запроса
+        name: str | None = None,
+        auto: bool = True,
+    ) -> str:
         """
         Регистрирует значение и возвращает плейсхолдер.
 
@@ -67,12 +73,16 @@ class Renderer(threading.local):
             return f"${self.param_index}"
         raise AssertionError(f"Invalid param_style - {param_style}")
 
-    def sql_safe(self, value):
+    def sql_safe(self, value: Any) -> Markup:  # любое значение
         """Filter to mark the value of an expression as safe for inserting
         in a SQL statement"""
         return Markup(value)
 
-    def bind(self, value, name=None):
+    def bind(
+        self,
+        value: Any,  # значение параметра запроса
+        name: str | None = None,
+    ) -> str | Markup:
         """A filter that prints %s, and stores the value
         in an array, so that it can be bound using a prepared statement
 
@@ -82,7 +92,11 @@ class Renderer(threading.local):
             return value
         return self._bind_param(value, name, auto=name is None)
 
-    def autobind(self, value, name=""):
+    def autobind(
+        self,
+        value: Any,  # значение параметра запроса
+        name: str = "",
+    ) -> str | Markup:
         """Filter automatically applied to every {{variable}}
         during the lexing stage, so developers can't forget to bind.
 
@@ -92,7 +106,7 @@ class Renderer(threading.local):
             return value
         return self._bind_param(value, name, auto=True)
 
-    def bind_in_clause(self, value):
+    def bind_in_clause(self, value: Iterable[Any]) -> str:
         values = list(value)
         if not values:
             return "(NULL)"
@@ -101,8 +115,11 @@ class Renderer(threading.local):
         clause = ",".join(results)
         return "(" + clause + ")"
 
-    def build_escape_identifier_filter(self, quote_char):
-        def quote_and_escape(value):
+    def build_escape_identifier_filter(
+        self,
+        quote_char: str,
+    ) -> Callable[[Any], Markup]:
+        def quote_and_escape(value: str) -> str:
             # Escape double quote with 2 double quotes,
             # or escape backtick with 2 backticks
             return (
@@ -111,14 +128,15 @@ class Renderer(threading.local):
                 f"{quote_char}"
             )
 
-        def identifier_filter(raw_identifier):
+        def identifier_filter(raw_identifier: Any) -> Markup:  # str/Iterable
             if isinstance(raw_identifier, str):
                 raw_identifier = (raw_identifier,)
             if not isinstance(raw_identifier, Iterable):
                 raise ValueError(
                     "identifier filter expects a string or an Iterable"
                 )
-            return Markup(".".join(quote_and_escape(s) for s in raw_identifier))
+            parts = cast("Iterable[str]", raw_identifier)
+            return Markup(".".join(quote_and_escape(s) for s in parts))
 
         return identifier_filter
 

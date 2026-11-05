@@ -1,4 +1,4 @@
-from typing import cast
+from typing import Any
 
 import MySQLdb
 
@@ -10,12 +10,12 @@ class MySQLDBTransaction(Transaction, driver=MySQLdb):
     _DEFAULT_ISOLATION = "REPEATABLE READ"
 
     @classmethod
-    def enable_autocommit(cls, conn):
+    def enable_autocommit(cls, conn: Any) -> None:
         pass
 
-    def _enable_params(self):
+    def _enable_params(self) -> None:
         if level := self._params.get("level"):
-            conn = cast("MySQLdb.Connection", self._current.conn)
+            conn: Any = self._current.conn
             cursor = conn.cursor()
             try:
                 cursor.execute(
@@ -24,9 +24,9 @@ class MySQLDBTransaction(Transaction, driver=MySQLdb):
             finally:
                 cursor.close()
 
-    def _restore_params(self):
+    def _restore_params(self) -> None:
         if self._params.get("level"):
-            conn = cast("MySQLdb.Connection", self._current.conn)
+            conn: Any = self._current.conn
             cursor = conn.cursor()
             try:
                 cursor.execute(
@@ -36,25 +36,25 @@ class MySQLDBTransaction(Transaction, driver=MySQLdb):
             finally:
                 cursor.close()
 
-    def _start_savepoint(self):
+    def _start_savepoint(self) -> None:
         self._savepoint_name = f"sp_{id(self)}"
-        conn = cast("MySQLdb.Connection", self._current.conn)
+        conn: Any = self._current.conn
         cursor = conn.cursor()
         try:
             cursor.execute(f"SAVEPOINT {self._savepoint_name}")
         finally:
             cursor.close()
 
-    def _release_savepoint(self):
-        conn = cast("MySQLdb.Connection", self._current.conn)
+    def _release_savepoint(self) -> None:
+        conn: Any = self._current.conn
         cursor = conn.cursor()
         try:
             cursor.execute(f"RELEASE SAVEPOINT {self._savepoint_name}")
         finally:
             cursor.close()
 
-    def _rollback_savepoint(self):
-        conn = cast("MySQLdb.Connection", self._current.conn)
+    def _rollback_savepoint(self) -> None:
+        conn: Any = self._current.conn
         cursor = conn.cursor()
         try:
             cursor.execute(f"ROLLBACK TO SAVEPOINT {self._savepoint_name}")
@@ -64,19 +64,19 @@ class MySQLDBTransaction(Transaction, driver=MySQLdb):
 
 
 class MySQLDBConnectionValidator(ConnectionValidator, driver=MySQLdb):
-    def validate(self, conn):
+    def validate(self, conn: Any) -> bool:
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
             cursor.fetchone()
             cursor.close()
-        except Exception:
+        except Exception:  # любая ошибка = соединение негодно
             return False
         return True
 
-    def before_release(self, conn):
+    def before_release(self, conn: Any) -> bool:
         try:
             conn.rollback()
-        except Exception:
+        except Exception:  # любая ошибка = соединение негодно
             return False
         return self.validate(conn)

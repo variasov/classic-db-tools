@@ -16,6 +16,7 @@ import logging
 import queue
 import threading
 from collections.abc import Callable
+from types import TracebackType
 from typing import Any
 
 from .conn_validator import ConnectionValidator
@@ -63,17 +64,17 @@ class ConnectionPool:
     # How long to wait for a connection to become available
     timeout: float
 
-    _pool: queue.Queue
+    _pool: queue.Queue[ConnType]
 
     def __init__(
         self,
         driver: DBModule,
-        connection_factory,
+        connection_factory: Callable[[], ConnType],
         timeout: float = 5.0,
         limit: int = 0,
         validator: ConnectionValidator | str = "auto",
-        autocommit_setter: Callable | None = None,
-    ):
+        autocommit_setter: Callable[[ConnType], None] | None = None,
+    ) -> None:
         self._pool = self.queue_class()
         self.driver = driver
         self.lock = self.lock_class()
@@ -111,7 +112,7 @@ class ConnectionPool:
             f"{self.max_validation_retries} attempts"
         )
 
-    def _acquire(self):
+    def _acquire(self) -> ConnType:
         """
         Return a connection from the pool.
         """
@@ -137,7 +138,7 @@ class ConnectionPool:
         return ContextManagerWrappedConnection(self)
 
     def _connect(self) -> ConnType:
-        conn = self.connection_factory()  # type: ignore
+        conn = self.connection_factory()
         if self._autocommit_setter is not None:
             self._autocommit_setter(conn)
         self.connections_created += 1
@@ -162,7 +163,7 @@ class ContextManagerWrappedConnection:
     conn: ConnType
     pool: ConnectionPool
 
-    def __init__(self, pool: ConnectionPool):
+    def __init__(self, pool: ConnectionPool) -> None:
         self.conn = None
         self.pool = pool
 
@@ -170,6 +171,11 @@ class ContextManagerWrappedConnection:
         self.conn = self.pool.acquire()
         return self.conn
 
-    def __exit__(self, exc_type, exc_value, tb) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
         self.pool.release(self.conn)
         return False

@@ -1,33 +1,37 @@
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
+
+from classic.db_tools import Engine
 
 pytestmark = pytest.mark.usefixtures("data")
 
 
 class TestExecute:
-    def test_returns_cursor(self, engine):
+    def test_returns_cursor(self, engine: Engine[Any]):
         cursor = engine.query_from("get_all.sql").execute()
         row = cursor.fetchone()
+        assert row is not None
         assert row[0] == 1
 
-    def test_with_dict_params(self, engine):
+    def test_with_dict_params(self, engine: Engine[Any]):
         result = engine.query(
             "SELECT :v AS out",
             static=True,
         ).scalar({"v": "dict_val"})
         assert result == "dict_val"
 
-    def test_with_kwargs(self, engine):
+    def test_with_kwargs(self, engine: Engine[Any]):
         result = engine.query(
             "SELECT :v AS out",
             static=True,
         ).scalar(v="kwarg_val")
         assert result == "kwarg_val"
 
-    def test_with_object_params(self, engine):
+    def test_with_object_params(self, engine: Engine[Any]):
         class Obj:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.v = "obj_val"
 
         result = engine.query(
@@ -38,7 +42,7 @@ class TestExecute:
 
 
 class TestExecutemany:
-    def test_insert_many_dicts(self, engine):
+    def test_insert_many_dicts(self, engine: Engine[Any]):
         engine.query_from("insert_item.sql").executemany(
             [
                 {"t": "em_a", "v": 1},
@@ -50,7 +54,7 @@ class TestExecutemany:
         assert "em_a" in titles
         assert "em_b" in titles
 
-    def test_insert_many_objects(self, engine):
+    def test_insert_many_objects(self, engine: Engine[Any]):
         engine.query_from("insert_item.sql").executemany(
             [
                 SimpleNamespace(t="emo_x", v=10),
@@ -64,7 +68,7 @@ class TestExecutemany:
 
 
 class TestAll:
-    def test_returns_all_rows(self, engine):
+    def test_returns_all_rows(self, engine: Engine[Any]):
         engine.query_from("insert_item.sql").executemany(
             [
                 {"t": "all_a", "v": 1},
@@ -74,13 +78,13 @@ class TestAll:
         rows = engine.query_from("select_items_order_by_id.sql").all()
         assert len(rows) == 2
 
-    def test_returns_empty_list(self, engine):
+    def test_returns_empty_list(self, engine: Engine[Any]):
         rows = engine.query_from("select_item_by_title.sql").all(t="no_such")
         assert rows == []
 
 
 class TestOne:
-    def test_returns_row(self, engine):
+    def test_returns_row(self, engine: Engine[Any]):
         engine.query_from("insert_item.sql").execute(t="one_only", v=7)
         row = engine.query_from("select_item_title_value_by_title.sql").one(
             t="one_only"
@@ -88,7 +92,7 @@ class TestOne:
         assert row is not None
         assert row[0] == "one_only"
 
-    def test_returns_none_when_empty(self, engine):
+    def test_returns_none_when_empty(self, engine: Engine[Any]):
         row = engine.query_from("select_item_title_value_by_title.sql").one(
             t="no_such"
         )
@@ -96,17 +100,17 @@ class TestOne:
 
 
 class TestScalar:
-    def test_returns_value(self, engine):
+    def test_returns_value(self, engine: Engine[Any]):
         val = engine.query("SELECT 42", static=True).scalar()
         assert val == 42
 
-    def test_returns_none_when_empty(self, engine):
+    def test_returns_none_when_empty(self, engine: Engine[Any]):
         val = engine.query_from("select_value_from_items_by_title.sql").scalar(
             t="no_such"
         )
         assert val is None
 
-    def test_raises_when_empty_with_raising(self, engine):
+    def test_raises_when_empty_with_raising(self, engine: Engine[Any]):
         with pytest.raises(IndexError):
             engine.query_from("select_value_from_items_by_title.sql").scalar(
                 t="no_such",
@@ -115,7 +119,7 @@ class TestScalar:
 
 
 class TestScalars:
-    def test_yields_first_column(self, engine):
+    def test_yields_first_column(self, engine: Engine[Any]):
         engine.query_from("insert_item.sql").executemany(
             [
                 {"t": "sc_a", "v": 10},
@@ -131,7 +135,7 @@ class TestScalars:
 
 
 class TestIter:
-    def test_yields_rows_in_batches(self, engine):
+    def test_yields_rows_in_batches(self, engine: Engine[Any]):
         engine.query_from("insert_item.sql").executemany(
             [
                 {"t": "it_a", "v": 1},
@@ -147,14 +151,14 @@ class TestIter:
 
 
 class TestRowcount:
-    def test_returns_affected_rows(self, engine):
+    def test_returns_affected_rows(self, engine: Engine[Any]):
         engine.query_from("insert_item.sql").execute(t="rc", v=0)
         count = engine.query_from("update_item_value_by_title.sql").rowcount(
             t="rc", v=99
         )
         assert count == 1
 
-    def test_zero_for_no_match(self, engine):
+    def test_zero_for_no_match(self, engine: Engine[Any]):
         count = engine.query_from("update_item_value_by_title.sql").rowcount(
             t="no_such", v=99
         )
@@ -162,7 +166,7 @@ class TestRowcount:
 
 
 class TestExternalCursor:
-    def test_execute_with_cursor(self, engine):
+    def test_execute_with_cursor(self, engine: Engine[Any]):
         with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -175,7 +179,7 @@ class TestExternalCursor:
             assert row is not None
             assert row[0] == "ext0"
 
-    def test_one_with_external_cursor(self, engine):
+    def test_one_with_external_cursor(self, engine: Engine[Any]):
         with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -185,9 +189,10 @@ class TestExternalCursor:
             row = engine.query_from(
                 "select_item_title_value_by_title.sql",
             ).one(cursor=cur, t="ext1")
+            assert row is not None
             assert row[0] == "ext1"
 
-    def test_scalar_with_external_cursor(self, engine):
+    def test_scalar_with_external_cursor(self, engine: Engine[Any]):
         with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -199,7 +204,7 @@ class TestExternalCursor:
             ).scalar(cursor=cur, t="es1")
             assert val == 99
 
-    def test_scalars_with_external_cursor(self, engine):
+    def test_scalars_with_external_cursor(self, engine: Engine[Any]):
         with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -217,7 +222,7 @@ class TestExternalCursor:
             )
             assert vals == [1, 2]
 
-    def test_iter_with_external_cursor(self, engine):
+    def test_iter_with_external_cursor(self, engine: Engine[Any]):
         with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -235,7 +240,7 @@ class TestExternalCursor:
             )
             assert len(rows) == 2
 
-    def test_rowcount_with_external_cursor(self, engine):
+    def test_rowcount_with_external_cursor(self, engine: Engine[Any]):
         with engine.conn() as conn:
             cur = conn.cursor()
             cur.execute(

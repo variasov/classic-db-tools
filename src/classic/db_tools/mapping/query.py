@@ -1,23 +1,21 @@
-from collections.abc import Callable, Generator, Iterator, Sequence
+from collections.abc import Callable, Generator, Iterator
 from functools import partial
 from typing import (
     Any,
     Generic,
-    TypeVar,
     cast,
 )
 
 from classic.db_tools.conn_scope import ConnectionScope
-from classic.db_tools.dbapi import Cursor, Row
+from classic.db_tools.dbapi import Cursor
 from classic.db_tools.rows import Rows
 from classic.db_tools.templates import Template
 
 from .mapper import Mapper
 from .params import Parameter, create_mapping
-from .types import MapperFunc
+from .types import MapperFunc, Result
 
-QueryParams = dict[str, Any] | Any
-Result = TypeVar("Result", bound=type[object])
+QueryParams = Any  # dict или объект с __dict__
 
 
 class MapperQuery(Generic[Result]):
@@ -46,7 +44,7 @@ class MapperQuery(Generic[Result]):
         self,
         params: QueryParams = None,
         /,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
     ) -> str:
         """
@@ -64,7 +62,7 @@ class MapperQuery(Generic[Result]):
         with self._conn_scope() as conn:
             return self._sources(conn.cursor(), prepared)
 
-    def _sources(self, cursor: Cursor, params: dict[str, Any]) -> str:
+    def _sources(self, cursor: Cursor[Any], params: dict[str, Any]) -> str:
         mapper = self._execute(cursor, params)
         return getattr(mapper, "sources", lambda: "")()
 
@@ -72,9 +70,9 @@ class MapperQuery(Generic[Result]):
         self,
         params: QueryParams | None = None,
         /,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
-    ) -> Sequence[Result]:
+    ) -> list[Result]:
         """
         Возвращает список результатов запроса в виде заказанных объектов.
 
@@ -94,7 +92,11 @@ class MapperQuery(Generic[Result]):
         with self._conn_scope() as conn:
             return self._all(conn.cursor(), prepared)
 
-    def _all(self, cursor: Cursor, params: dict[str, Any]) -> Sequence[Result]:
+    def _all(
+        self,
+        cursor: Cursor[Any],
+        params: dict[str, Any],
+    ) -> list[Result]:
         mapper = self._execute(cursor, params)
         return list(mapper(iter(cursor.fetchall())))
 
@@ -103,7 +105,7 @@ class MapperQuery(Generic[Result]):
         params: QueryParams | None = None,
         /,
         batch: int | None = 500,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
     ) -> Rows[Result]:
         """
@@ -131,7 +133,7 @@ class MapperQuery(Generic[Result]):
 
         prepared = self._prepare(params, kwargs)
 
-        return Rows.start(
+        return Rows[Result].start(
             self._conn_scope,
             lambda cur: self._iter(cur, prepared, batch),
             cursor,
@@ -139,7 +141,7 @@ class MapperQuery(Generic[Result]):
 
     def _iter(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         params: dict[str, Any],
         batch: int | None,
     ) -> Iterator[Result]:
@@ -151,7 +153,7 @@ class MapperQuery(Generic[Result]):
         params: QueryParams | None = None,
         /,
         batch: int = 500,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
     ) -> Result | None:
         """
@@ -176,7 +178,7 @@ class MapperQuery(Generic[Result]):
 
     def _one(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         params: dict[str, Any],
         batch: int | None,
     ) -> Result | None:
@@ -203,9 +205,9 @@ class MapperQuery(Generic[Result]):
 
     def _execute(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         params: dict[str, Any],
-    ) -> MapperFunc:
+    ) -> MapperFunc[Result]:
         self._tmpl_factory().execute(cursor, params)
         return self._mapper.func_for_cursor(
             cursor,
@@ -215,13 +217,9 @@ class MapperQuery(Generic[Result]):
 
     @staticmethod
     def _iterate_rows(
-        cursor: Cursor,
+        cursor: Cursor[Any],
         batch: int | None,
-    ) -> Generator[
-        Row,
-        None,
-        None,
-    ]:
+    ) -> Generator[Any, None, None]:
         fetch = partial(cursor.fetchmany, batch) if batch else cursor.fetchall
         while True:
             rows = fetch()

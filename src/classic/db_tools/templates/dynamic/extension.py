@@ -1,5 +1,7 @@
+from collections.abc import Iterator, Sequence
+
 from jinja2.ext import Extension
-from jinja2.lexer import Token
+from jinja2.lexer import Token, TokenStream
 
 
 class AutoBind(Extension):
@@ -8,7 +10,7 @@ class AutoBind(Extension):
     фильтр bind к каждой переменной в шаблоне.
     """
 
-    def extract_param_name(self, tokens):
+    def extract_param_name(self, tokens: Sequence[Token]) -> str:
         name = ""
         for token in tokens:
             if token.test("variable_begin"):
@@ -22,7 +24,7 @@ class AutoBind(Extension):
     BRACKETS_OPEN = ("lparen", "lbracket", "lbrace")
     BRACKETS_CLOSE = ("rparen", "rbracket", "rbrace")
 
-    def last_filter(self, tokens):
+    def last_filter(self, tokens: Sequence[Token]) -> str | None:
         """
         Имя последнего фильтра верхнего уровня (после последнего pipe
         на нулевой вложенности скобок) или None. После имени фильтра
@@ -47,7 +49,7 @@ class AutoBind(Extension):
             return None
         return name.value
 
-    def filter_stream(self, stream):
+    def filter_stream(self, stream: TokenStream) -> Iterator[Token]:
         """
         We convert
         {{ some.variable | filter1 | filter 2 }}
@@ -67,7 +69,7 @@ class AutoBind(Extension):
         while not stream.eos:
             token = next(stream)
             if token.test("variable_begin"):
-                var_expr = []
+                var_expr: list[Token] = []
                 while not token.test("variable_end"):
                     var_expr.append(token)
                     token = next(stream)

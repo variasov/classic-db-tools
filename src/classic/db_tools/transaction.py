@@ -18,12 +18,12 @@ class Transaction:
     _params: dict[str, Any]
     _first: bool | None
 
-    def __init_subclass__(cls, driver: DBModule, **kwargs):
+    def __init_subclass__(cls, driver: DBModule, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         cls.implementations[driver] = cls
 
     @classmethod
-    def enable_autocommit(cls, conn):
+    def enable_autocommit(cls, conn: Any) -> None:
         conn.autocommit = True
 
     def __init__(
@@ -32,7 +32,7 @@ class Transaction:
         current: Scope,
         commit: bool = True,
         params: dict[str, Any] | None = None,
-    ):
+    ) -> None:
         super().__init__()
         self._conn_pool = conn_pool
         self._commit_on_exit = commit
@@ -41,23 +41,23 @@ class Transaction:
         self._params = params or {}
         self._first = None
 
-    def _enable_params(self):
+    def _enable_params(self) -> None:
         raise NotImplementedError
 
-    def _restore_params(self):
+    def _restore_params(self) -> None:
         raise NotImplementedError
 
-    def _start_savepoint(self):
+    def _start_savepoint(self) -> None:
         raise NotImplementedError
 
-    def _release_savepoint(self):
+    def _release_savepoint(self) -> None:
         raise NotImplementedError
 
-    def _rollback_savepoint(self):
-        conn = cast("Connection", self._current.conn)
+    def _rollback_savepoint(self) -> None:
+        conn = cast("Connection[Any]", self._current.conn)
         conn.rollback()
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         if self._current.conn is None:
             self._conn_scope = ConnectionScope(
                 self._conn_pool,
@@ -92,7 +92,7 @@ class Transaction:
         value: BaseException | None,
         traceback: TracebackType | None,
     ) -> bool | None:
-        conn = cast("Connection", self._current.conn)
+        conn = cast("Connection[Any]", self._current.conn)
         first = self._first
         exc_info = (type_, value, traceback)
         try:

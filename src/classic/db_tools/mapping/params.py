@@ -10,14 +10,14 @@ from typing import (
 
 from frozendict import frozendict
 
-Factory: TypeAlias = type[Any] | Callable[[Any], Any]
+Factory: TypeAlias = Callable[..., Any]
 
 
 @dataclass(frozen=True, init=False)
 class Relationship:
     target: str
 
-    def __init__(self, target: Any):
+    def __init__(self, target: Any) -> None:
         if not isinstance(target, str):
             target = target.__class__.__name__
         object.__setattr__(self, "target", target.lower())
@@ -56,7 +56,7 @@ class Parameter:
             object.__setattr__(self, "relationships", frozendict(rels))
             return
 
-        new_rels = {}
+        new_rels: dict[str, Relationship] = {}
         for name_, sign_param in signature.parameters.items():
             # User parameters have priority
             if rel := rels.get(name_):
@@ -109,7 +109,8 @@ class Entity(Parameter):
         # Set ID
         if isinstance(id_, str):
             id_ = (id_.lower(),)
-        elif isinstance(id_, tuple):
+        elif isinstance(id_, tuple):  # pyright: ignore[reportUnnecessaryIsInstance]
+            # runtime-проверка сохранена: id_ может прийти не по аннотации
             id_ = tuple(_.lower() for _ in id_)
 
         object.__setattr__(self, "id", id_)

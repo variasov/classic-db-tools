@@ -1,5 +1,7 @@
 import os
 import sqlite3
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
@@ -7,12 +9,12 @@ from classic.db_tools import Engine
 from classic.db_tools.pool import ConnectionPool
 
 
-def connect():
+def connect() -> sqlite3.Connection:
     return sqlite3.connect(":memory:")
 
 
 @pytest.fixture(scope="session")
-def engine():
+def engine() -> Engine[Any]:
     return Engine(
         sqlite3,
         connect,
@@ -22,12 +24,12 @@ def engine():
 
 
 @pytest.fixture
-def standalone_engine():
+def standalone_engine() -> Engine[Any]:
     return Engine(sqlite3, connect)
 
 
 @pytest.fixture(scope="session", autouse=True)
-def schema(engine):
+def schema(engine: Engine[Any]) -> None:
     with engine.conn():
         engine.query(
             "CREATE TABLE IF NOT EXISTS items "
@@ -57,6 +59,6 @@ def schema(engine):
 
 
 @pytest.fixture
-def data(engine, schema):
+def data(engine: Engine[Any], schema: None) -> Iterator[None]:
     with engine.transaction(commit=False):
         yield

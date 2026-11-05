@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 import pytest
 
-from classic.db_tools import Add, Append, Assign, Entity, Value
+from classic.db_tools import Add, Append, Assign, Engine, Entity, Value
 
 pytestmark = pytest.mark.usefixtures("data")
 
@@ -16,15 +17,15 @@ class Item:
 
 @dataclass
 class NullableItem:
-    id: int = None
-    title: str = None
+    id: int | None = None
+    title: str | None = None
 
 
 @dataclass
 class Parent:
     id: int = 0
     name: str = ""
-    children: list = field(default_factory=list)
+    children: list[Any] = field(default_factory=list[Any])
     child: object = None
 
 
@@ -48,7 +49,7 @@ class Tag:
 class ParentWithTags:
     id: int = 0
     name: str = ""
-    tags: set = field(default_factory=set)
+    tags: set[Any] = field(default_factory=set[Any])
 
 
 INSERT_ITEM = "insert_map_item.sql"
@@ -63,12 +64,12 @@ JOIN_PARENTS_TAGS = "join_parents_tags.sql"
 UNION_ALL_ITEMS = "select_map_items_union_all.sql"
 
 
-def _insert_item(engine, title, value):
+def _insert_item(engine: Engine[Any], title: str, value: int) -> None:
     engine.query_from(INSERT_ITEM).execute(t=title, v=value)
 
 
 class TestMappingEntity:
-    def test_map_to_one(self, engine):
+    def test_map_to_one(self, engine: Engine[Any]):
         _insert_item(engine, "map_one", 10)
         item = (
             engine.query_from(SELECT_ITEMS)
@@ -79,7 +80,7 @@ class TestMappingEntity:
         assert item.title == "map_one"
         assert item.value == 10
 
-    def test_map_to_all(self, engine):
+    def test_map_to_all(self, engine: Engine[Any]):
         _insert_item(engine, "a", 1)
         _insert_item(engine, "b", 2)
         items = (
@@ -91,7 +92,7 @@ class TestMappingEntity:
         assert items[0].title == "a"
         assert items[1].value == 2
 
-    def test_entity_identity_map_deduplicates(self, engine):
+    def test_entity_identity_map_deduplicates(self, engine: Engine[Any]):
         _insert_item(engine, "same", 99)
         rows = (
             engine.query_from(UNION_ALL_ITEMS)
@@ -104,7 +105,7 @@ class TestMappingEntity:
         )
         assert len(rows) == 1
 
-    def test_entity_with_custom_prefix(self, engine):
+    def test_entity_with_custom_prefix(self, engine: Engine[Any]):
         _insert_item(engine, "prefix", 7)
         item = (
             engine.query_from(SELECT_ITEMS_PREFIX)
@@ -118,7 +119,7 @@ class TestMappingEntity:
         assert item is not None
         assert item.title == "prefix"
 
-    def test_entity_with_any_prefix_in_kwargs(self, engine):
+    def test_entity_with_any_prefix_in_kwargs(self, engine: Engine[Any]):
         _insert_item(engine, "kwmap", 3)
         item = (
             engine.query_from(SELECT_ITEMS_KW)
@@ -128,7 +129,7 @@ class TestMappingEntity:
         assert item is not None
         assert item.title == "kwmap"
 
-    def test_mapper_iter(self, engine):
+    def test_mapper_iter(self, engine: Engine[Any]):
         _insert_item(engine, "a", 1)
         _insert_item(engine, "b", 2)
         items = list(
@@ -138,7 +139,7 @@ class TestMappingEntity:
         )
         assert len(items) == 2
 
-    def test_mapper_iter_without_batch(self, engine):
+    def test_mapper_iter_without_batch(self, engine: Engine[Any]):
         _insert_item(engine, "a", 1)
         _insert_item(engine, "b", 2)
         items = list(
@@ -148,7 +149,7 @@ class TestMappingEntity:
         )
         assert len(items) == 2
 
-    def test_returns_none_when_id_is_null(self, engine):
+    def test_returns_none_when_id_is_null(self, engine: Engine[Any]):
         items = (
             engine.query(
                 "SELECT NULL AS item__id, "
@@ -163,7 +164,7 @@ class TestMappingEntity:
 
 
 class TestMappingValue:
-    def test_value_mapping(self, engine):
+    def test_value_mapping(self, engine: Engine[Any]):
         s = (
             engine.query(
                 "SELECT 42 AS summary__total",
@@ -179,7 +180,7 @@ class TestMappingValue:
         assert s is not None
         assert s.total == 42
 
-    def test_value_reduce_none_true(self, engine):
+    def test_value_reduce_none_true(self, engine: Engine[Any]):
         item = (
             engine.query(
                 "SELECT NULL AS val__id, NULL AS val__title",
@@ -194,7 +195,7 @@ class TestMappingValue:
         )
         assert item is None
 
-    def test_value_reduce_none_false(self, engine):
+    def test_value_reduce_none_false(self, engine: Engine[Any]):
         item = (
             engine.query(
                 "SELECT NULL AS val__id, NULL AS val__title",
@@ -211,7 +212,7 @@ class TestMappingValue:
         assert item.id is None
         assert item.title is None
 
-    def test_value_no_identity_dedup(self, engine):
+    def test_value_no_identity_dedup(self, engine: Engine[Any]):
         rows = (
             engine.query(
                 """
@@ -234,13 +235,13 @@ class TestMappingValue:
 
 
 class TestMappingRelationships:
-    def _seed_parent_with_children(self, engine):
+    def _seed_parent_with_children(self, engine: Engine[Any]):
         engine.query_from(INSERT_PARENT).execute(i=1, n="p1")
         engine.query_from(INSERT_CHILD).executemany(
             [{"p": 1, "l": "c1"}, {"p": 1, "l": "c2"}],
         )
 
-    def test_append_relationship(self, engine):
+    def test_append_relationship(self, engine: Engine[Any]):
         self._seed_parent_with_children(engine)
         parents = (
             engine.query_from(JOIN_PARENTS_CHILDREN)
@@ -257,7 +258,7 @@ class TestMappingRelationships:
         labels = {c.label for c in parents[0].children}
         assert labels == {"c1", "c2"}
 
-    def test_assign_relationship(self, engine):
+    def test_assign_relationship(self, engine: Engine[Any]):
         engine.query_from(INSERT_PARENT).execute(i=1, n="p_assign")
         engine.query_from(INSERT_CHILD).execute(p=1, l="c_assign")
         parent = (
@@ -274,7 +275,7 @@ class TestMappingRelationships:
         assert parent.child is not None
         assert parent.child.label == "c_assign"
 
-    def test_append_null_relationship(self, engine):
+    def test_append_null_relationship(self, engine: Engine[Any]):
         engine.query_from(INSERT_PARENT).execute(i=1, n="null_rel")
         parents = (
             engine.query_from(JOIN_PARENTS_CHILDREN)
@@ -290,7 +291,7 @@ class TestMappingRelationships:
         assert parents[0].name == "null_rel"
         assert parents[0].children == []
 
-    def test_add_relationship(self, engine):
+    def test_add_relationship(self, engine: Engine[Any]):
         engine.query_from(INSERT_PARENT).execute(i=1, n="p_tags")
         engine.query_from(INSERT_TAG).executemany(
             [{"p": 1, "n": "t1"}, {"p": 1, "n": "t2"}],
@@ -308,7 +309,7 @@ class TestMappingRelationships:
         assert len(parents) == 1
         assert parents[0].tags == {Tag("t1"), Tag("t2")}
 
-    def test_assign_null_relationship(self, engine):
+    def test_assign_null_relationship(self, engine: Engine[Any]):
         engine.query_from(INSERT_PARENT).execute(i=1, n="no_child")
         parent = (
             engine.query_from(JOIN_PARENTS_CHILDREN)
@@ -325,7 +326,7 @@ class TestMappingRelationships:
 
 
 class TestMappingSources:
-    def test_sources_returns_source_code(self, engine):
+    def test_sources_returns_source_code(self, engine: Engine[Any]):
         _insert_item(engine, "src", 0)
         sources = (
             engine.query_from(SELECT_ITEMS)
@@ -334,7 +335,7 @@ class TestMappingSources:
         )
         assert "mapper_func" in sources
 
-    def test_sources_without_cursor(self, engine):
+    def test_sources_without_cursor(self, engine: Engine[Any]):
         _insert_item(engine, "src2", 1)
         sources = (
             engine.query_from(SELECT_ITEMS)

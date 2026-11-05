@@ -13,10 +13,10 @@ class Scope(threading.local):
     Инстанцируется движком во время работы.
     """
 
-    conn: Connection | None
+    conn: Connection[Any] | None
     tx_params: dict[str, Any] | None
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.conn = None
         self.tx_params = None

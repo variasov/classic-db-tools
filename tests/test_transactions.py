@@ -1,4 +1,6 @@
 import sqlite3
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -8,12 +10,12 @@ pytestmark = pytest.mark.usefixtures("data")
 
 
 class TestTransaction:
-    def test_commits_on_success(self, engine):
+    def test_commits_on_success(self, engine: Engine[Any]):
         engine.query_from("insert_item.sql").execute(t="tc_commit", v=1)
         row = engine.query_from("select_item_by_title.sql").one(t="tc_commit")
         assert row is not None
 
-    def test_rollback_on_exception(self, engine):
+    def test_rollback_on_exception(self, engine: Engine[Any]):
         try:
             with engine.transaction():
                 engine.query_from("insert_item.sql").execute(
@@ -26,13 +28,13 @@ class TestTransaction:
         row = engine.query_from("select_item_by_title.sql").one(t="tc_rollback")
         assert row is None
 
-    def test_commit_false_rolls_back(self, engine):
+    def test_commit_false_rolls_back(self, engine: Engine[Any]):
         with engine.transaction(commit=False):
             engine.query_from("insert_item.sql").execute(t="tc_nocommit", v=1)
         row = engine.query_from("select_item_by_title.sql").one(t="tc_nocommit")
         assert row is None
 
-    def test_as_decorator(self, engine):
+    def test_as_decorator(self, engine: Engine[Any]):
         call_count = 0
 
         @engine.transaction
@@ -44,7 +46,7 @@ class TestTransaction:
         work()
         assert call_count == 1
 
-    def test_decorator_preserves_return_value(self, engine):
+    def test_decorator_preserves_return_value(self, engine: Engine[Any]):
 
         @engine.transaction
         def work():
@@ -54,7 +56,7 @@ class TestTransaction:
 
 
 class TestNestedTransaction:
-    def test_nested_commit_all(self, engine):
+    def test_nested_commit_all(self, engine: Engine[Any]):
         with engine.transaction():
             engine.query_from("insert_item.sql").execute(
                 t="nest_outer",
@@ -74,7 +76,7 @@ class TestNestedTransaction:
         assert row_out is not None
         assert row_in is not None
 
-    def test_inner_rollback_does_not_affect_outer(self, engine):
+    def test_inner_rollback_does_not_affect_outer(self, engine: Engine[Any]):
         with engine.transaction():
             engine.query_from("insert_item.sql").execute(t="ni_outer", v=1)
             try:
@@ -93,7 +95,7 @@ class TestNestedTransaction:
         row_in = engine.query_from("select_item_by_title.sql").one(t="ni_inner")
         assert row_in is None
 
-    def test_outer_rollback_rolls_back_inner_too(self, engine):
+    def test_outer_rollback_rolls_back_inner_too(self, engine: Engine[Any]):
         try:
             with engine.transaction():
                 engine.query_from("insert_item.sql").execute(
@@ -115,7 +117,7 @@ class TestNestedTransaction:
         assert row_out is None
         assert row_in is None
 
-    def test_work_after_inner_rollback(self, engine):
+    def test_work_after_inner_rollback(self, engine: Engine[Any]):
         with engine.transaction():
             engine.query_from("insert_item.sql").execute(t="nw_outer", v=1)
             try:
@@ -144,7 +146,7 @@ class TestNestedTransaction:
         assert row_after is not None
         assert row_inner is None
 
-    def test_nested_decorator(self, engine):
+    def test_nested_decorator(self, engine: Engine[Any]):
 
         @engine.transaction
         def outer():
@@ -169,7 +171,7 @@ class TestNestedTransaction:
             is not None
         )
 
-    def test_nested_decorator_rollback(self, engine):
+    def test_nested_decorator_rollback(self, engine: Engine[Any]):
 
         @engine.transaction
         def outer():
@@ -188,12 +190,12 @@ class TestNestedTransaction:
 
 
 class TestConn:
-    def test_context_manager(self, engine):
+    def test_context_manager(self, engine: Engine[Any]):
         with engine.conn():
             result = engine.query("SELECT 2 AS b", static=True).scalar()
         assert result == 2
 
-    def test_as_decorator(self, engine):
+    def test_as_decorator(self, engine: Engine[Any]):
         call_count = 0
 
         @engine.conn
@@ -205,7 +207,7 @@ class TestConn:
         work()
         assert call_count == 1
 
-    def test_multiple_queries_in_conn(self, engine):
+    def test_multiple_queries_in_conn(self, engine: Engine[Any]):
         with engine.conn():
             engine.query_from("insert_item.sql").execute(t="cm_multi", v=1)
             row = engine.query_from("select_item_by_title.sql").one(
@@ -213,7 +215,7 @@ class TestConn:
             )
             assert row is not None
 
-    def test_decorator_preserves_return_value(self, engine):
+    def test_decorator_preserves_return_value(self, engine: Engine[Any]):
 
         @engine.conn
         def work():
@@ -224,10 +226,10 @@ class TestConn:
 
 class TestCommitFailure:
     @pytest.fixture
-    def fk_engine(self, tmp_path):
+    def fk_engine(self, tmp_path: Path) -> Engine[Any]:
         path = str(tmp_path / "fk.db")
 
-        def connect():
+        def connect() -> sqlite3.Connection:
             conn = sqlite3.connect(path)
             conn.execute("PRAGMA foreign_keys = ON")
             return conn
@@ -247,27 +249,27 @@ class TestCommitFailure:
         return eng
 
     @staticmethod
-    def _insert_child(eng, id_, parent_id):
+    def _insert_child(eng: Engine[Any], id_: int, parent_id: int) -> None:
         eng.query(
             "INSERT INTO child (id, parent_id) VALUES (:i, :p)",
             static=True,
         ).execute(i=id_, p=parent_id)
 
     @staticmethod
-    def _count(eng):
+    def _count(eng: Engine[Any]) -> int:
         return eng.query(
             "SELECT count(*) FROM child",
             static=True,
         ).scalar()
 
-    def test_commit_error_propagates(self, fk_engine):
+    def test_commit_error_propagates(self, fk_engine: Engine[Any]):
         with pytest.raises(sqlite3.IntegrityError):
             with fk_engine.transaction():
                 self._insert_child(fk_engine, 1, 999)
 
         assert self._count(fk_engine) == 0
 
-    def test_engine_usable_after_failure(self, fk_engine):
+    def test_engine_usable_after_failure(self, fk_engine: Engine[Any]):
         with pytest.raises(sqlite3.IntegrityError):
             with fk_engine.transaction():
                 self._insert_child(fk_engine, 1, 999)
@@ -281,7 +283,7 @@ class TestCommitFailure:
 
         assert self._count(fk_engine) == 1
 
-    def test_failure_inside_outer_conn(self, fk_engine):
+    def test_failure_inside_outer_conn(self, fk_engine: Engine[Any]):
         with fk_engine.conn():
             with pytest.raises(sqlite3.IntegrityError):
                 with fk_engine.transaction():

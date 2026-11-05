@@ -1,7 +1,7 @@
 import contextlib
 from collections.abc import Callable, Iterator
 from types import TracebackType
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from .conn_scope import ConnectionScope
 from .dbapi import Cursor
@@ -28,13 +28,13 @@ class Rows(Iterator[T], Generic[T]):
 
     _closed = True
     _source: Iterator[T] | None = None
-    _cursor: Cursor | None = None
+    _cursor: Cursor[Any] | None = None
     _release: Callable[[], None] | None = None
 
     def __init__(
         self,
         source: Iterator[T],
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         release: Callable[[], None] | None = None,
     ) -> None:
         self._source = source
@@ -46,8 +46,8 @@ class Rows(Iterator[T], Generic[T]):
     def start(
         cls,
         conn_scope: Callable[[], ConnectionScope],
-        run: Callable[[Cursor], Iterator[T]],
-        cursor: Cursor | None = None,
+        run: Callable[[Cursor[Any]], Iterator[T]],
+        cursor: Cursor[Any] | None = None,
     ) -> "Rows[T]":
         """
         Выполняет запрос и возвращает Rows.
@@ -67,7 +67,7 @@ class Rows(Iterator[T], Generic[T]):
             conn = scope.acquire_detached()
             release = lambda: scope.release_detached(conn)  # noqa: E731
 
-        own_cursor: Cursor | None = None
+        own_cursor: Cursor[Any] | None = None
         try:
             own_cursor = conn.cursor()
             return cls(run(own_cursor), own_cursor, release)

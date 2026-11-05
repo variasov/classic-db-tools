@@ -1,15 +1,17 @@
 from collections.abc import Generator, Iterator
-from typing import Literal, TypeVar
-
-from classic.db_tools.dbapi import Row
+from typing import Any, Literal, Protocol, TypeVar
 
 Accessor = Literal["attr", "item"]
-Result = TypeVar("Result", bound=type[object])
+Result = TypeVar("Result")
+Result_co = TypeVar("Result_co", covariant=True)
 
 
-class MapperFunc:
+class MapperFunc(Protocol[Result_co]):
+    """Скомпилированная функция-маппер строк результата в объекты."""
+
     def __call__(
-        self, rows: Iterator[Row]
-    ) -> Generator[Result, None, None]: ...
+        self,
+        rows: Iterator[Any],
+    ) -> Generator[Result_co, None, None]: ...
 
     def sources(self) -> str: ...

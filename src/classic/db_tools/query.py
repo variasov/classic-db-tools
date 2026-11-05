@@ -1,20 +1,22 @@
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import (
     Any,
+    Generic,
     cast,
 )
 
 from .conn_scope import ConnectionScope
-from .dbapi import Cursor, Row
+from .dbapi import Cursor, RowT
 from .detached_cursor import DetachedCursor
-from .mapping import Mapper, MapperQuery, Parameter, Result
+from .mapping import Mapper, MapperQuery, Parameter
+from .mapping.types import Result
 from .rows import Rows
 from .templates import Template
 
-QueryParams = dict[str, Any] | Any
+QueryParams = Any  # dict, tuple или объект с __dict__
 
 
-class Query:
+class Query(Generic[RowT]):
     """
     Объект-запрос.
 
@@ -32,20 +34,22 @@ class Query:
         conn_scope: Callable[[], ConnectionScope],
         mapper: Mapper,
         tmpl_factory: Callable[[], Template],
-    ):
+    ) -> None:
         self._conn_scope = conn_scope
         self._mapper = mapper
         self._tmpl_factory = tmpl_factory
 
     def map_to(
         self,
-        result: Result,
+        result: Callable[..., Result],
         prefix: str | None = None,
         /,
         **params: Parameter,
     ) -> MapperQuery[Result]:
         """
         Возвращает объект MapperQuery с указанными параметрами.
+
+        result - класс или функция-фабрика объектов результата.
         """
 
         prefix_ = result.__name__.lower() if prefix is None else prefix.lower()
@@ -61,9 +65,9 @@ class Query:
         self,
         params: QueryParams = None,
         /,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
-    ) -> Cursor:
+    ) -> Cursor[RowT]:
         """
         Запускает выполнение запроса с указанными параметрами.
 
@@ -92,7 +96,10 @@ class Query:
             lambda cur: self._tmpl_factory().execute(cur, prepared),
         )
 
-    def _run_detachable(self, run: Callable[[Cursor], Cursor]) -> Cursor:
+    def _run_detachable(
+        self,
+        run: Callable[[Cursor[Any]], Cursor[Any]],
+    ) -> Cursor[RowT]:
         scope = self._conn_scope()
         in_scope = scope.held_conn() is not None
         with scope as conn:
@@ -103,13 +110,13 @@ class Query:
                 rowcount = run(cur).rowcount
             finally:
                 cur.close()
-        return cast("Cursor", DetachedCursor(rowcount))
+        return cast("Cursor[RowT]", DetachedCursor(rowcount))
 
     def executemany(
         self,
         params: Iterable[QueryParams],
-        cursor: Cursor | None = None,
-    ) -> Cursor:
+        cursor: Cursor[Any] | None = None,
+    ) -> Cursor[RowT]:
         """
         Запускает множественное выполнение запроса с указанными параметрами.
 
@@ -145,9 +152,9 @@ class Query:
         self,
         params: QueryParams = None,
         /,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
-    ) -> Sequence[Row]:
+    ) -> Sequence[RowT]:
         """
         Запускает выполнение запроса с указанными параметрами.
 
@@ -169,7 +176,11 @@ class Query:
         with self._conn_scope() as conn:
             return self._all(conn.cursor(), prepared)
 
-    def _all(self, cursor: Cursor, params: dict[str, Any]) -> Sequence[Row]:
+    def _all(
+        self,
+        cursor: Cursor[Any],
+        params: dict[str, Any],
+    ) -> Sequence[RowT]:
         cursor = self._tmpl_factory().execute(cursor, params)
         return cursor.fetchall()
 
@@ -178,9 +189,9 @@ class Query:
         params: QueryParams = None,
         /,
         batch: int = 500,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
-    ) -> Rows[Any]:
+    ) -> Rows[RowT]:
         """
         Запускает выполнение запроса с указанными параметрами.
 
@@ -209,7 +220,7 @@ class Query:
 
         prepared = self._prepare(params, kwargs)
 
-        return Rows.start(
+        return Rows[RowT].start(
             self._conn_scope,
             lambda cur: self._iter(cur, prepared, batch),
             cursor,
@@ -217,10 +228,10 @@ class Query:
 
     def _iter(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         params: dict[str, Any],
         batch: int,
-    ) -> Iterator[Any]:
+    ) -> Iterator[RowT]:
         cursor = self._tmpl_factory().execute(cursor, params)
         return self._fetch_rows(cursor, batch)
 
@@ -228,9 +239,9 @@ class Query:
         self,
         params: QueryParams = None,
         /,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
-    ) -> Any:
+    ) -> RowT | None:
         """
         Запускает выполнение запроса с указанными параметрами.
 
@@ -252,7 +263,11 @@ class Query:
         with self._conn_scope() as conn:
             return self._one(conn.cursor(), prepared)
 
-    def _one(self, cursor: Cursor, params: dict[str, Any]) -> Any:
+    def _one(
+        self,
+        cursor: Cursor[Any],
+        params: dict[str, Any],
+    ) -> RowT | None:
         cursor = self._tmpl_factory().execute(cursor, params)
         return cursor.fetchone()
 
@@ -261,7 +276,7 @@ class Query:
         params: QueryParams = None,
         /,
         raising: bool = False,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
     ) -> Any:
         """
@@ -290,7 +305,7 @@ class Query:
 
     def _scalar(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         params: dict[str, Any],
         raising: bool,
     ) -> Any:
@@ -307,7 +322,7 @@ class Query:
         params: QueryParams = None,
         /,
         batch: int = 500,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
     ) -> Rows[Any]:
         """
@@ -337,7 +352,7 @@ class Query:
 
         prepared = self._prepare(params, kwargs)
 
-        return Rows.start(
+        return Rows[Any].start(
             self._conn_scope,
             lambda cur: self._scalars(cur, prepared, batch),
             cursor,
@@ -345,7 +360,7 @@ class Query:
 
     def _scalars(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         params: dict[str, Any],
         batch: int,
     ) -> Iterator[Any]:
@@ -353,7 +368,7 @@ class Query:
         return (row[0] for row in self._fetch_rows(cursor, batch))
 
     @staticmethod
-    def _fetch_rows(cursor: Cursor, batch: int) -> Iterator[Row]:
+    def _fetch_rows(cursor: Cursor[Any], batch: int) -> Iterator[Any]:
         while True:
             batch_ = cursor.fetchmany(batch)
             if not batch_:
@@ -364,7 +379,7 @@ class Query:
         self,
         params: QueryParams = None,
         /,
-        cursor: Cursor | None = None,
+        cursor: Cursor[Any] | None = None,
         **kwargs: Any,
     ) -> int:
         """

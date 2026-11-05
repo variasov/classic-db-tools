@@ -13,15 +13,15 @@ class Template(ABC):
     @abstractmethod
     def execute(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         params: dict[str, Any],
-    ) -> Cursor:
+    ) -> Cursor[Any]:
         pass
 
     @abstractmethod
     def executemany(
         self,
-        cursor: Cursor,
+        cursor: Cursor[Any],
         params: Sequence[dict[str, Any]],
-    ) -> Cursor:
+    ) -> Cursor[Any]:
         pass
