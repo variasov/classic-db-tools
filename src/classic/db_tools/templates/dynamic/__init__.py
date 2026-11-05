@@ -1,11 +1,11 @@
-from .template import DynamicTemplate
 from .cache import DynamicTemplatesCache
-from .renderer import Renderer
 from .extension import AutoBind
+from .renderer import Renderer
+from .template import DynamicTemplate
 
 __all__ = (
+    "AutoBind",
     "DynamicTemplate",
     "DynamicTemplatesCache",
     "Renderer",
-    "AutoBind",
 )

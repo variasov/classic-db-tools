@@ -1,15 +1,15 @@
-from dataclasses import dataclass
 import copy
 import gc
 import sqlite3
+from dataclasses import dataclass
 
 import pytest
 
 from classic.db_tools import (
-    Engine,
-    Entity,
     CursorOutsideScopeError,
     DetachedCursor,
+    Engine,
+    Entity,
 )
 from classic.db_tools.pool import ConnectionLimitError
 

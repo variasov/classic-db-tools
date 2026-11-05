@@ -52,13 +52,14 @@ class TestUniqueNames:
     def test_macro_twice_named(self, style):
         sql, params = render(MACRO, style, one=Obj(1), two=Obj(2))
         found = names(sql, style)
-        assert len(found) == 2 and found[0] != found[1]
+        assert len(found) == 2
+        assert found[0] != found[1]
         assert [params[n] for n in found] == [1, 2]
         assert len(params) == 2
 
     @pytest.mark.parametrize("style", POSITIONAL)
     def test_macro_twice_positional(self, style):
-        sql, params = render(MACRO, style, one=Obj(1), two=Obj(2))
+        _sql, params = render(MACRO, style, one=Obj(1), two=Obj(2))
         assert params == [1, 2]
 
     def test_macro_twice_sqlite(self, engine, items):
@@ -86,7 +87,7 @@ class TestUniqueNames:
 
     @pytest.mark.parametrize("style", POSITIONAL)
     def test_loop_positional(self, style):
-        sql, params = render(
+        _sql, params = render(
             "{% for v in vs %}{{ v }},{% endfor %}",
             style,
             vs=[7, 8, 9],
@@ -132,7 +133,7 @@ class TestUniqueNames:
 class TestInclause:
     @pytest.mark.parametrize("style", POSITIONAL)
     def test_two_inclauses_positional(self, style):
-        sql, params = render(
+        _sql, params = render(
             "{{ a|inclause }} {{ b|inclause }}",
             style,
             a=[1, 2],
@@ -186,7 +187,7 @@ class TestExplicitBind:
 
     @pytest.mark.parametrize("style", STYLES)
     def test_explicit_name_with_sqlsafe(self, style):
-        sql, params = render(
+        _sql, params = render(
             "{{ x | bind('p1') | sqlsafe }}",
             style,
             x=5,
@@ -198,7 +199,7 @@ class TestExplicitBind:
 
     @pytest.mark.parametrize("style", STYLES)
     def test_bind_name_expression(self, style):
-        sql, params = render(
+        _sql, params = render(
             "{{ x | bind('p_' ~ i) }}",
             style,
             x=5,
@@ -227,7 +228,7 @@ class TestExplicitBind:
 
     @pytest.mark.parametrize("style", NAMED)
     def test_same_name_same_values(self, style):
-        sql, params = render(
+        _sql, params = render(
             "{{ x | bind('p1') }} {{ y | bind('p1') }}",
             style,
             x=1,
@@ -237,7 +238,7 @@ class TestExplicitBind:
 
     @pytest.mark.parametrize("style", POSITIONAL)
     def test_same_name_positional(self, style):
-        sql, params = render(
+        _sql, params = render(
             "{{ x | bind('p1') }} {{ y | bind('p1') }}",
             style,
             x=1,

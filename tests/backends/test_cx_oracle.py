@@ -4,9 +4,14 @@ import pytest
 
 cx_Oracle = pytest.importorskip("cx_Oracle")
 
-from classic.db_tools import Engine  # noqa: E402
-from classic.db_tools.pool import ConnectionPool, ConnectionLimitError  # noqa: E402
-from classic.db_tools.backends.cx_oracle import CxOracleConnectionValidator  # noqa: E402
+from classic.db_tools import Engine
+from classic.db_tools.backends.cx_oracle import (
+    CxOracleConnectionValidator,
+)
+from classic.db_tools.pool import (
+    ConnectionLimitError,
+    ConnectionPool,
+)
 
 
 def connect():
@@ -168,25 +173,24 @@ class TestCxOracleSavepoints:
         assert count == 2
 
     def test_rollback_savepoint(self, oracle_engine):
-        with oracle_engine.conn():
-            with oracle_engine.transaction():
-                oracle_engine.query(
-                    'INSERT INTO "_sp_test" (id) VALUES (10)',
-                    static=True,
-                ).execute()
-                try:
-                    with oracle_engine.transaction():
-                        oracle_engine.query(
-                            'INSERT INTO "_sp_test" (id) VALUES (20)',
-                            static=True,
-                        ).execute()
-                        raise RuntimeError("force rollback")
-                except RuntimeError:
-                    pass
-                count = oracle_engine.query(
-                    'SELECT COUNT(*) FROM "_sp_test"',
-                    static=True,
-                ).scalar()
+        with oracle_engine.conn(), oracle_engine.transaction():
+            oracle_engine.query(
+                'INSERT INTO "_sp_test" (id) VALUES (10)',
+                static=True,
+            ).execute()
+            try:
+                with oracle_engine.transaction():
+                    oracle_engine.query(
+                        'INSERT INTO "_sp_test" (id) VALUES (20)',
+                        static=True,
+                    ).execute()
+                    raise RuntimeError("force rollback")
+            except RuntimeError:
+                pass
+            count = oracle_engine.query(
+                'SELECT COUNT(*) FROM "_sp_test"',
+                static=True,
+            ).scalar()
         assert count == 1
 
 

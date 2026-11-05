@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from classic.db_tools.dbapi import Cursor
 
@@ -13,7 +14,7 @@ class Template(ABC):
     def execute(
         self,
         cursor: Cursor,
-        params: Dict[str, Any],
+        params: dict[str, Any],
     ) -> Cursor:
         pass
 
@@ -21,6 +22,6 @@ class Template(ABC):
     def executemany(
         self,
         cursor: Cursor,
-        params: Sequence[Dict[str, Any]],
+        params: Sequence[dict[str, Any]],
     ) -> Cursor:
         pass

@@ -1,10 +1,10 @@
-from typing import ClassVar, Dict, Type
+from typing import ClassVar
 
 from .dbapi import DBModule
 
 
 class ConnectionValidator:
-    validators: ClassVar[Dict[DBModule, Type["ConnectionValidator"]]] = {}
+    validators: ClassVar[dict[DBModule, type["ConnectionValidator"]]] = {}
 
     def __init_subclass__(cls, driver: DBModule, **kwargs):
         cls.validators[driver] = cls

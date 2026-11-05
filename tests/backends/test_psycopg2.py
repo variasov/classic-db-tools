@@ -4,9 +4,14 @@ import pytest
 
 psycopg2 = pytest.importorskip("psycopg2")
 
-from classic.db_tools import Engine  # noqa: E402
-from classic.db_tools.pool import ConnectionPool, ConnectionLimitError  # noqa: E402
-from classic.db_tools.backends.psycopg2 import Psycopg2ConnectionValidator  # noqa: E402
+from classic.db_tools import Engine
+from classic.db_tools.backends.psycopg2 import (
+    Psycopg2ConnectionValidator,
+)
+from classic.db_tools.pool import (
+    ConnectionLimitError,
+    ConnectionPool,
+)
 
 
 def connect():

@@ -1,14 +1,15 @@
+import contextlib
+from collections.abc import Callable, Iterator
 from types import TracebackType
-from typing import Callable, Generic, Iterator, Optional, Type, TypeVar
+from typing import Generic, TypeVar
 
 from .conn_scope import ConnectionScope
 from .dbapi import Cursor
 
-
 T = TypeVar("T")
 
 
-class Rows(Generic[T], Iterator[T]):
+class Rows(Iterator[T], Generic[T]):
     """
     Итератор по результатам запроса.
 
@@ -26,15 +27,15 @@ class Rows(Generic[T], Iterator[T]):
     """
 
     _closed = True
-    _source: Optional[Iterator[T]] = None
-    _cursor: Optional[Cursor] = None
-    _release: Optional[Callable[[], None]] = None
+    _source: Iterator[T] | None = None
+    _cursor: Cursor | None = None
+    _release: Callable[[], None] | None = None
 
     def __init__(
         self,
         source: Iterator[T],
-        cursor: Optional[Cursor] = None,
-        release: Optional[Callable[[], None]] = None,
+        cursor: Cursor | None = None,
+        release: Callable[[], None] | None = None,
     ) -> None:
         self._source = source
         self._cursor = cursor
@@ -46,7 +47,7 @@ class Rows(Generic[T], Iterator[T]):
         cls,
         conn_scope: Callable[[], ConnectionScope],
         run: Callable[[Cursor], Iterator[T]],
-        cursor: Optional[Cursor] = None,
+        cursor: Cursor | None = None,
     ) -> "Rows[T]":
         """
         Выполняет запрос и возвращает Rows.
@@ -61,22 +62,20 @@ class Rows(Generic[T], Iterator[T]):
 
         scope = conn_scope()
         conn = scope.held_conn()
-        release: Optional[Callable[[], None]] = None
+        release: Callable[[], None] | None = None
         if conn is None:
             conn = scope.acquire_detached()
             release = lambda: scope.release_detached(conn)  # noqa: E731
 
-        own_cursor: Optional[Cursor] = None
+        own_cursor: Cursor | None = None
         try:
             own_cursor = conn.cursor()
             return cls(run(own_cursor), own_cursor, release)
         except BaseException:
             try:
                 if own_cursor is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         own_cursor.close()
-                    except Exception:
-                        pass
             finally:
                 if release is not None:
                     release()
@@ -99,9 +98,9 @@ class Rows(Generic[T], Iterator[T]):
 
     def __exit__(
         self,
-        type_: Optional[Type[BaseException]],
-        value: Optional[BaseException],
-        traceback: Optional[TracebackType],
+        type_: type[BaseException] | None,
+        value: BaseException | None,
+        traceback: TracebackType | None,
     ) -> None:
         self.close()
 
@@ -128,7 +127,5 @@ class Rows(Generic[T], Iterator[T]):
                 release()
 
     def __del__(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.close()
-        except Exception:
-            pass

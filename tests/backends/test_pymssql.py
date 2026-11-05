@@ -4,9 +4,14 @@ import pytest
 
 pymssql = pytest.importorskip("pymssql")
 
-from classic.db_tools import Engine  # noqa: E402
-from classic.db_tools.pool import ConnectionPool, ConnectionLimitError  # noqa: E402
-from classic.db_tools.backends.pymssql import PyMSSQLConnectionValidator  # noqa: E402
+from classic.db_tools import Engine
+from classic.db_tools.backends.pymssql import (
+    PyMSSQLConnectionValidator,
+)
+from classic.db_tools.pool import (
+    ConnectionLimitError,
+    ConnectionPool,
+)
 
 
 def connect():
@@ -113,43 +118,41 @@ class TestPyMSSQLTransactionIsolation:
 
 class TestPyMSSQLSavepoints:
     def test_start_and_release_savepoint(self, mssql_engine):
-        with mssql_engine.conn():
+        with mssql_engine.conn(), mssql_engine.transaction():
+            mssql_engine.query(
+                "CREATE TABLE #_sp_test (id INT)",
+                static=True,
+            ).execute()
             with mssql_engine.transaction():
                 mssql_engine.query(
-                    "CREATE TABLE #_sp_test (id INT)",
+                    "INSERT INTO #_sp_test (id) VALUES (1)",
                     static=True,
                 ).execute()
-                with mssql_engine.transaction():
-                    mssql_engine.query(
-                        "INSERT INTO #_sp_test (id) VALUES (1)",
-                        static=True,
-                    ).execute()
-                count = mssql_engine.query(
-                    "SELECT COUNT(*) FROM #_sp_test",
-                    static=True,
-                ).scalar()
+            count = mssql_engine.query(
+                "SELECT COUNT(*) FROM #_sp_test",
+                static=True,
+            ).scalar()
         assert count == 1
 
     def test_rollback_savepoint(self, mssql_engine):
-        with mssql_engine.conn():
-            with mssql_engine.transaction():
-                mssql_engine.query(
-                    "CREATE TABLE #_sp_rollback (id INT)",
-                    static=True,
-                ).execute()
-                try:
-                    with mssql_engine.transaction():
-                        mssql_engine.query(
-                            "INSERT INTO #_sp_rollback (id) VALUES (1)",
-                            static=True,
-                        ).execute()
-                        raise RuntimeError("force rollback")
-                except RuntimeError:
-                    pass
-                count = mssql_engine.query(
-                    "SELECT COUNT(*) FROM #_sp_rollback",
-                    static=True,
-                ).scalar()
+        with mssql_engine.conn(), mssql_engine.transaction():
+            mssql_engine.query(
+                "CREATE TABLE #_sp_rollback (id INT)",
+                static=True,
+            ).execute()
+            try:
+                with mssql_engine.transaction():
+                    mssql_engine.query(
+                        "INSERT INTO #_sp_rollback (id) VALUES (1)",
+                        static=True,
+                    ).execute()
+                    raise RuntimeError("force rollback")
+            except RuntimeError:
+                pass
+            count = mssql_engine.query(
+                "SELECT COUNT(*) FROM #_sp_rollback",
+                static=True,
+            ).scalar()
         assert count == 0
 
 

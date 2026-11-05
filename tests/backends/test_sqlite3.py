@@ -5,8 +5,8 @@ import pytest
 pytestmark = pytest.mark.usefixtures("data")
 
 from classic.db_tools.backends.sqlite3 import (
-    Sqlite3Transaction,
     Sqlite3ConnectionValidator,
+    Sqlite3Transaction,
 )
 
 

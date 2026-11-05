@@ -1,9 +1,9 @@
-import MySQLdb
-
 from typing import cast
 
-from ..conn_validator import ConnectionValidator
-from ..transaction import Transaction
+import MySQLdb
+
+from classic.db_tools.conn_validator import ConnectionValidator
+from classic.db_tools.transaction import Transaction
 
 
 class MySQLDBTransaction(Transaction, driver=MySQLdb):
@@ -15,7 +15,7 @@ class MySQLDBTransaction(Transaction, driver=MySQLdb):
 
     def _enable_params(self):
         if level := self._params.get("level"):
-            conn = cast(MySQLdb.Connection, self._current.conn)
+            conn = cast("MySQLdb.Connection", self._current.conn)
             cursor = conn.cursor()
             try:
                 cursor.execute(
@@ -26,7 +26,7 @@ class MySQLDBTransaction(Transaction, driver=MySQLdb):
 
     def _restore_params(self):
         if self._params.get("level"):
-            conn = cast(MySQLdb.Connection, self._current.conn)
+            conn = cast("MySQLdb.Connection", self._current.conn)
             cursor = conn.cursor()
             try:
                 cursor.execute(
@@ -38,7 +38,7 @@ class MySQLDBTransaction(Transaction, driver=MySQLdb):
 
     def _start_savepoint(self):
         self._savepoint_name = f"sp_{id(self)}"
-        conn = cast(MySQLdb.Connection, self._current.conn)
+        conn = cast("MySQLdb.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"SAVEPOINT {self._savepoint_name}")
@@ -46,7 +46,7 @@ class MySQLDBTransaction(Transaction, driver=MySQLdb):
             cursor.close()
 
     def _release_savepoint(self):
-        conn = cast(MySQLdb.Connection, self._current.conn)
+        conn = cast("MySQLdb.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"RELEASE SAVEPOINT {self._savepoint_name}")
@@ -54,7 +54,7 @@ class MySQLDBTransaction(Transaction, driver=MySQLdb):
             cursor.close()
 
     def _rollback_savepoint(self):
-        conn = cast(MySQLdb.Connection, self._current.conn)
+        conn = cast("MySQLdb.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"ROLLBACK TO SAVEPOINT {self._savepoint_name}")

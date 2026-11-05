@@ -4,9 +4,14 @@ import pytest
 
 MySQLdb = pytest.importorskip("MySQLdb")
 
-from classic.db_tools import Engine  # noqa: E402
-from classic.db_tools.pool import ConnectionPool, ConnectionLimitError  # noqa: E402
-from classic.db_tools.backends.mysqldb import MySQLDBConnectionValidator  # noqa: E402
+from classic.db_tools import Engine
+from classic.db_tools.backends.mysqldb import (
+    MySQLDBConnectionValidator,
+)
+from classic.db_tools.pool import (
+    ConnectionLimitError,
+    ConnectionPool,
+)
 
 
 def connect():

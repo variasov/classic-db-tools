@@ -2,8 +2,8 @@ from typing import cast
 
 import cx_Oracle
 
-from ..conn_validator import ConnectionValidator
-from ..transaction import Transaction
+from classic.db_tools.conn_validator import ConnectionValidator
+from classic.db_tools.transaction import Transaction
 
 
 class CxOracleTransaction(Transaction, driver=cx_Oracle):
@@ -12,7 +12,7 @@ class CxOracleTransaction(Transaction, driver=cx_Oracle):
         conn.autocommit = True
 
     def _enable_params(self):
-        conn = cast(cx_Oracle.Connection, self._current.conn)
+        conn = cast("cx_Oracle.Connection", self._current.conn)
         conn.autocommit = False
         if level := self._params.get("level"):
             # Oracle supports only READ COMMITTED and SERIALIZABLE
@@ -23,12 +23,12 @@ class CxOracleTransaction(Transaction, driver=cx_Oracle):
                 cursor.close()
 
     def _restore_params(self):
-        conn = cast(cx_Oracle.Connection, self._current.conn)
+        conn = cast("cx_Oracle.Connection", self._current.conn)
         conn.autocommit = True
 
     def _start_savepoint(self):
         self._savepoint_name = f"sp_{id(self)}"
-        conn = cast(cx_Oracle.Connection, self._current.conn)
+        conn = cast("cx_Oracle.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"SAVEPOINT {self._savepoint_name}")
@@ -41,7 +41,7 @@ class CxOracleTransaction(Transaction, driver=cx_Oracle):
         pass
 
     def _rollback_savepoint(self):
-        conn = cast(cx_Oracle.Connection, self._current.conn)
+        conn = cast("cx_Oracle.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"ROLLBACK TO SAVEPOINT {self._savepoint_name}")

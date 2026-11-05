@@ -1,13 +1,13 @@
 import logging
-from typing import Any, Dict, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import jinja2
 
 from classic.db_tools.dbapi import Cursor
+from classic.db_tools.templates.template import Template
 
 from .renderer import Renderer
-
-from ..template import Template
 
 
 class DynamicTemplate(Template):
@@ -32,7 +32,7 @@ class DynamicTemplate(Template):
     def execute(
         self,
         cursor: Cursor,
-        params: Dict[str, Any],
+        params: dict[str, Any],
     ) -> Cursor:
         sql, ordered_params = self.renderer.prepare_query(
             self.template,
@@ -46,7 +46,7 @@ class DynamicTemplate(Template):
     def executemany(
         self,
         cursor: Cursor,
-        params: Sequence[Dict[str, Any]],
+        params: Sequence[dict[str, Any]],
     ) -> Cursor:
         for param in params:
             sql, ordered_params = self.renderer.prepare_query(

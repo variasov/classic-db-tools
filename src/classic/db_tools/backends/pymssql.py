@@ -2,8 +2,8 @@ from typing import cast
 
 import pymssql
 
-from ..conn_validator import ConnectionValidator
-from ..transaction import Transaction
+from classic.db_tools.conn_validator import ConnectionValidator
+from classic.db_tools.transaction import Transaction
 
 
 class PyMSSQLTransaction(Transaction, driver=pymssql):
@@ -15,7 +15,7 @@ class PyMSSQLTransaction(Transaction, driver=pymssql):
 
     def _enable_params(self):
         if level := self._params.get("level"):
-            conn = cast(pymssql.Connection, self._current.conn)
+            conn = cast("pymssql.Connection", self._current.conn)
             cursor = conn.cursor()
             try:
                 cursor.execute(f"SET TRANSACTION ISOLATION LEVEL {level}")
@@ -24,7 +24,7 @@ class PyMSSQLTransaction(Transaction, driver=pymssql):
 
     def _restore_params(self):
         if self._params.get("level"):
-            conn = cast(pymssql.Connection, self._current.conn)
+            conn = cast("pymssql.Connection", self._current.conn)
             cursor = conn.cursor()
             try:
                 cursor.execute(
@@ -35,7 +35,7 @@ class PyMSSQLTransaction(Transaction, driver=pymssql):
 
     def _start_savepoint(self):
         self._savepoint_name = f"sp_{id(self)}"
-        conn = cast(pymssql.Connection, self._current.conn)
+        conn = cast("pymssql.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"SAVE TRANSACTION {self._savepoint_name}")
@@ -43,11 +43,14 @@ class PyMSSQLTransaction(Transaction, driver=pymssql):
             cursor.close()
 
     def _release_savepoint(self):
-        pass  # T-SQL has no RELEASE SAVEPOINT equivalent; changes are already part of outer TX
+        # T-SQL has no RELEASE SAVEPOINT equivalent;
+        # changes are already part of outer TX
+        pass
 
     def _rollback_savepoint(self):
-        # ROLLBACK TRANSACTION <name> rolls back to savepoint only, not the entire outer TX
-        conn = cast(pymssql.Connection, self._current.conn)
+        # ROLLBACK TRANSACTION <name> rolls back to savepoint only,
+        # not the entire outer TX
+        conn = cast("pymssql.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"ROLLBACK TRANSACTION {self._savepoint_name}")

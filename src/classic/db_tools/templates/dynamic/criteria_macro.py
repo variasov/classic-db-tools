@@ -1,7 +1,5 @@
 from typing import Any
 
-from jinja2 import Environment
-
 from classic.criteria import (
     And,
     CriteriaNode,
@@ -11,6 +9,7 @@ from classic.criteria import (
     ReturnsTrue,
     Xor,
 )
+from jinja2 import Environment
 
 
 def traverse(criteria: CriteriaNode[Any], translators) -> str:
@@ -24,66 +23,56 @@ def traverse(criteria: CriteriaNode[Any], translators) -> str:
         if not criteria.nested:
             return "1=1"
         return " AND ".join(
-            "({})".format(traverse(nested, translators))
-            for nested in criteria.nested
+            f"({traverse(nested, translators)})" for nested in criteria.nested
         )
-    elif isinstance(criteria, Or):
+    if isinstance(criteria, Or):
         if not criteria.nested:
             return "1=0"
         return " OR ".join(
-            "({})".format(traverse(nested, translators))
-            for nested in criteria.nested
+            f"({traverse(nested, translators)})" for nested in criteria.nested
         )
-    elif isinstance(criteria, Xor):
+    if isinstance(criteria, Xor):
         # XOR есть не во всех СУБД (нет в PostgreSQL и SQLite),
         # поэтому раскрываем: (A AND NOT B) OR (NOT A AND B).
         # Каждое вхождение рендерится заново: для позиционных
         # paramstyle у каждого плейсхолдера должно быть своё значение.
-        return "((({}) AND NOT ({})) OR (NOT ({}) AND ({})))".format(
-            traverse(criteria.left, translators),
-            traverse(criteria.right, translators),
-            traverse(criteria.left, translators),
-            traverse(criteria.right, translators),
+        left = criteria.left
+        right = criteria.right
+        return (
+            f"((({traverse(left, translators)}) AND NOT "
+            f"({traverse(right, translators)})) OR "
+            f"(NOT ({traverse(left, translators)}) AND "
+            f"({traverse(right, translators)})))"
         )
-    elif isinstance(criteria, Invert):
-        return "NOT ({})".format(traverse(criteria.nested, translators))
-    elif isinstance(criteria, ReturnsTrue):
+    if isinstance(criteria, Invert):
+        return f"NOT ({traverse(criteria.nested, translators)})"
+    if isinstance(criteria, ReturnsTrue):
         return "1=1"
-    elif isinstance(criteria, ReturnsFalse):
+    if isinstance(criteria, ReturnsFalse):
         return "1=0"
-    else:
-        name = criteria.__class__.__name__
-        macro = getattr(translators, name, None)
-        if not callable(macro):
-            raise LookupError(
-                'No macro "{}" for criteria {} in translators'.format(
-                    name,
-                    name,
-                )
-            )
-        return macro(criteria)
+    name = criteria.__class__.__name__
+    macro = getattr(translators, name, None)
+    if not callable(macro):
+        raise LookupError(
+            f'No macro "{name}" for criteria {name} in translators'
+        )
+    return macro(criteria)
 
 
 def contains(criteria: CriteriaNode[Any], *translators) -> bool:
     if isinstance(criteria, (And, Or)):
-        return any(
-            (contains(nested, *translators) for nested in criteria.nested)
-        )
-    elif isinstance(criteria, Xor):
+        return any(contains(nested, *translators) for nested in criteria.nested)
+    if isinstance(criteria, Xor):
         return contains(criteria.left, *translators) or contains(
             criteria.right, *translators
         )
-    elif isinstance(criteria, Invert):
+    if isinstance(criteria, Invert):
         return contains(criteria.nested, *translators)
-    else:
-        for translator in translators:
-            if isinstance(translator, str):
-                name = translator
-            else:
-                name = translator.name
-            if name == criteria.__class__.__name__:
-                return True
-        return False
+    for translator in translators:
+        name = translator if isinstance(translator, str) else translator.name
+        if name == criteria.__class__.__name__:
+            return True
+    return False
 
 
 def register_criteria_macro(env: Environment):

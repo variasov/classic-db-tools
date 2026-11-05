@@ -1,12 +1,12 @@
 import logging
-from os import PathLike
 import threading
-from typing import Sequence, Optional, Union
+from collections.abc import Sequence
+from os import PathLike
 
 import jinja2
 
-from .renderer import Renderer
 from .extension import AutoBind
+from .renderer import Renderer
 
 try:
     from .criteria_macro import register_criteria_macro
@@ -28,9 +28,9 @@ class DynamicTemplatesCache:
     def __init__(
         self,
         logger: logging.Logger,
-        templates_paths: Sequence[Union[str, PathLike]],
+        templates_paths: Sequence[str | PathLike],
         paramstyle: str,
-        identifier_quote_char: Optional[str] = None,
+        identifier_quote_char: str | None = None,
     ):
         self.identifier_quote_char = identifier_quote_char or '"'
         self.paramstyle = paramstyle
@@ -62,8 +62,8 @@ class DynamicTemplatesCache:
 
     def get_or_create(
         self,
-        filename: Optional[str] = None,
-        content: Optional[str] = None,
+        filename: str | None = None,
+        content: str | None = None,
     ) -> DynamicTemplate:
         if filename:
             key = filename

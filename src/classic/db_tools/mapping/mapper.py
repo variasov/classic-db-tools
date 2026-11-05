@@ -1,35 +1,27 @@
 import ast
+import threading
 from collections import defaultdict
+from collections.abc import Generator, Iterable
 from itertools import chain
 from typing import (
     Any,
-    Iterable,
-    List,
-    Tuple,
-    Dict,
-    Optional,
-    Generator,
     NamedTuple,
-    Type,
     cast,
 )
-import threading
 
 from classic.db_tools.dbapi import Cursor
 
 from .params import (
+    Add,
+    Append,
+    Assign,
+    Entity,
+    Mapping,
     Parameter,
     Relationship,
-    Assign,
-    Append,
-    Add,
-    Entity,
     Value,
-    Mapping,
 )
-
 from .types import Accessor, MapperFunc
-
 
 # Aliases for readability
 Prefix = str
@@ -72,17 +64,17 @@ class ResultParam(NamedTuple):
 
 
 class Context:
-    mapper: Dict[Prefix, Parameter]
-    rels: Dict[Prefix, Dict[Field, Relationship]]
+    mapper: dict[Prefix, Parameter]
+    rels: dict[Prefix, dict[Field, Relationship]]
     result: ResultParam
-    columns: Optional[Tuple[Column, ...]]
-    fields_to_columns: Dict[Prefix, Dict[Field, Tuple[int, Column]]]
+    columns: tuple[Column, ...] | None
+    fields_to_columns: dict[Prefix, dict[Field, tuple[int, Column]]]
 
     def __init__(
         self,
         result: str,
         mapping: Mapping,
-        columns: Tuple[Column, ...],
+        columns: tuple[Column, ...],
     ):
         self.mapper = {}
         self.rels = defaultdict(dict)
@@ -96,7 +88,7 @@ class Context:
         try:
             return (
                 "item"
-                if issubclass(cast(Type[Any], param.factory), dict)
+                if issubclass(cast("type[Any]", param.factory), dict)
                 else "attr"
             )
         except TypeError:
@@ -110,7 +102,7 @@ class Context:
 
     def parse_columns(
         self,
-        columns: Tuple[Column, ...],
+        columns: tuple[Column, ...],
         mapping: Mapping,
     ):
         self.columns = columns
@@ -144,7 +136,7 @@ class Context:
 def compile_mapper_func(
     result: str,
     mapper: Mapping,
-    columns: Tuple[Column, ...],
+    columns: tuple[Column, ...],
 ) -> MapperFunc:
     ctx = Context(result, mapper, columns)
 
@@ -161,9 +153,9 @@ def compile_mapper_func(
     func = namespace["mapper_func"]
 
     # Add source code to func for easy debugging
-    setattr(func, "sources", lambda: ast.unparse(ast_module))
+    func.sources = lambda: ast.unparse(ast_module)
 
-    return cast(MapperFunc, func)
+    return cast("MapperFunc", func)
 
 
 def render_identity_maps(ctx: Context) -> Iterable[ast.stmt]:
@@ -249,7 +241,7 @@ def render_cycle(ctx: Context) -> ast.stmt:
     )
 
 
-def render_check_for_none(columns: List[int]) -> ast.expr:
+def render_check_for_none(columns: list[int]) -> ast.expr:
     if len(columns) == 1:
         return ast.Compare(
             left=ast.Subscript(
@@ -260,22 +252,21 @@ def render_check_for_none(columns: List[int]) -> ast.expr:
             ops=[ast.Is()],
             comparators=[ast.Constant(None)],
         )
-    else:
-        return ast.BoolOp(
-            op=ast.And(),
-            values=[
-                ast.Compare(
-                    left=ast.Subscript(
-                        ast.Name("row", ast.Load()),
-                        ast.Constant(column),
-                        ast.Load(),
-                    ),
-                    ops=[ast.Is()],
-                    comparators=[ast.Constant(None)],
-                )
-                for column in columns
-            ],
-        )
+    return ast.BoolOp(
+        op=ast.And(),
+        values=[
+            ast.Compare(
+                left=ast.Subscript(
+                    ast.Name("row", ast.Load()),
+                    ast.Constant(column),
+                    ast.Load(),
+                ),
+                ops=[ast.Is()],
+                comparators=[ast.Constant(None)],
+            )
+            for column in columns
+        ],
+    )
 
 
 def render_factory_call(
@@ -537,7 +528,7 @@ def render_get_or_create(
         for field, rel in ctx.rels[prefix].items()
         if isinstance(rel, (Append, Add))
     ]
-    if_body: List[ast.stmt] = [
+    if_body: list[ast.stmt] = [
         render_factory_call(ctx, prefix, param),
         *(
             ast.Assign(
@@ -563,7 +554,7 @@ def render_get_or_create(
             ),
         ),
     ]
-    else_body: List[ast.stmt] = [
+    else_body: list[ast.stmt] = [
         ast.Assign(
             [
                 ast.Tuple(

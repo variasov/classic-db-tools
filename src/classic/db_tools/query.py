@@ -1,25 +1,17 @@
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import (
     Any,
-    Iterable,
-    Iterator,
-    List,
-    Sequence,
-    Union,
-    Dict,
-    Callable,
-    Optional,
     cast,
 )
 
-from .mapping import Mapper, Result, Parameter, MapperQuery
-from .dbapi import Row, Cursor
-from .templates import Template
 from .conn_scope import ConnectionScope
+from .dbapi import Cursor, Row
 from .detached_cursor import DetachedCursor
+from .mapping import Mapper, MapperQuery, Parameter, Result
 from .rows import Rows
+from .templates import Template
 
-
-QueryParams = Union[Dict[str, Any], Any]
+QueryParams = dict[str, Any] | Any
 
 
 class Query:
@@ -48,7 +40,7 @@ class Query:
     def map_to(
         self,
         result: Result,
-        prefix: Optional[str] = None,
+        prefix: str | None = None,
         /,
         **params: Parameter,
     ) -> MapperQuery[Result]:
@@ -56,10 +48,7 @@ class Query:
         Возвращает объект MapperQuery с указанными параметрами.
         """
 
-        if prefix is None:
-            prefix_ = result.__name__.lower()
-        else:
-            prefix_ = prefix.lower()
+        prefix_ = result.__name__.lower() if prefix is None else prefix.lower()
         return MapperQuery[Result](
             conn_scope=self._conn_scope,
             mapper=self._mapper,
@@ -114,7 +103,7 @@ class Query:
                 rowcount = run(cur).rowcount
             finally:
                 cur.close()
-        return cast(Cursor, DetachedCursor(rowcount))
+        return cast("Cursor", DetachedCursor(rowcount))
 
     def executemany(
         self,
@@ -138,7 +127,7 @@ class Query:
         """
 
         prepared = cast(
-            List[Dict[str, Any]],
+            "list[dict[str, Any]]",
             [
                 param if isinstance(param, (dict, tuple)) else param.__dict__
                 for param in params
@@ -180,7 +169,7 @@ class Query:
         with self._conn_scope() as conn:
             return self._all(conn.cursor(), prepared)
 
-    def _all(self, cursor: Cursor, params: Dict[str, Any]) -> Sequence[Row]:
+    def _all(self, cursor: Cursor, params: dict[str, Any]) -> Sequence[Row]:
         cursor = self._tmpl_factory().execute(cursor, params)
         return cursor.fetchall()
 
@@ -229,7 +218,7 @@ class Query:
     def _iter(
         self,
         cursor: Cursor,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         batch: int,
     ) -> Iterator[Any]:
         cursor = self._tmpl_factory().execute(cursor, params)
@@ -263,7 +252,7 @@ class Query:
         with self._conn_scope() as conn:
             return self._one(conn.cursor(), prepared)
 
-    def _one(self, cursor: Cursor, params: Dict[str, Any]) -> Any:
+    def _one(self, cursor: Cursor, params: dict[str, Any]) -> Any:
         cursor = self._tmpl_factory().execute(cursor, params)
         return cursor.fetchone()
 
@@ -302,7 +291,7 @@ class Query:
     def _scalar(
         self,
         cursor: Cursor,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         raising: bool,
     ) -> Any:
         cursor_ = self._tmpl_factory().execute(cursor, params)
@@ -357,7 +346,7 @@ class Query:
     def _scalars(
         self,
         cursor: Cursor,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         batch: int,
     ) -> Iterator[Any]:
         cursor = self._tmpl_factory().execute(cursor, params)
@@ -369,8 +358,7 @@ class Query:
             batch_ = cursor.fetchmany(batch)
             if not batch_:
                 return
-            for row in batch_:
-                yield row
+            yield from batch_
 
     def rowcount(
         self,
@@ -409,8 +397,8 @@ class Query:
             )
 
     @staticmethod
-    def _prepare(params: QueryParams, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        params_: Dict[str, Any] = params
+    def _prepare(params: QueryParams, kwargs: dict[str, Any]) -> dict[str, Any]:
+        params_: dict[str, Any] = params
         if params is None:
             params_ = kwargs
         elif not isinstance(params, (dict, tuple)):

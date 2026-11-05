@@ -1,10 +1,10 @@
-from typing import Literal, TypeVar, Generator, Iterator, Type
+from collections.abc import Generator, Iterator
+from typing import Literal, TypeVar
 
-from ..dbapi import Row
-
+from classic.db_tools.dbapi import Row
 
 Accessor = Literal["attr", "item"]
-Result = TypeVar("Result", bound=Type[object])
+Result = TypeVar("Result", bound=type[object])
 
 
 class MapperFunc:

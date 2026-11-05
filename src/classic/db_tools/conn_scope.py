@@ -1,9 +1,9 @@
 from types import TracebackType
-from typing import Optional, Type, cast
+from typing import cast
 
-from .scope import Scope
-from .pool import ConnectionPool
 from .dbapi import Connection
+from .pool import ConnectionPool
+from .scope import Scope
 
 
 class ConnectionScope:
@@ -16,7 +16,7 @@ class ConnectionScope:
 
     _conn_pool: ConnectionPool
     _current: Scope
-    _first: Optional[bool]
+    _first: bool | None
 
     def __init__(self, conn_pool: ConnectionPool, scope: Scope):
         super().__init__()
@@ -24,7 +24,7 @@ class ConnectionScope:
         self._current = scope
         self._first = None
 
-    def held_conn(self) -> Optional[Connection]:
+    def held_conn(self) -> Connection | None:
         """
         Возвращает соединение текущего Scope или None, если его нет.
         """
@@ -35,7 +35,7 @@ class ConnectionScope:
         Берет из пула отдельное соединение, не регистрируя его в Scope.
         Возвращать нужно через release_detached.
         """
-        return cast(Connection, self._conn_pool.acquire())
+        return cast("Connection", self._conn_pool.acquire())
 
     def release_detached(self, conn: Connection) -> None:
         self._conn_pool.release(conn)
@@ -45,14 +45,14 @@ class ConnectionScope:
             self._current.conn = self._conn_pool.acquire()
             self._first = True
 
-        return cast(Connection, self._current.conn)
+        return cast("Connection", self._current.conn)
 
     def __exit__(
         self,
-        type_: Optional[Type[BaseException]],
-        value: Optional[BaseException],
-        traceback: Optional[TracebackType],
-    ) -> Optional[bool]:
+        type_: type[BaseException] | None,
+        value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None:
         if self._first is True:
             try:
                 self._conn_pool.release(self._current.conn)

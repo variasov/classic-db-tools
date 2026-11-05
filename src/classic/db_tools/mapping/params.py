@@ -1,23 +1,16 @@
-from dataclasses import dataclass
 import inspect
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import (
     Any,
-    Callable,
-    Tuple,
-    Dict,
     TypeAlias,
-    Union,
     get_args,
     get_origin,
-    List,
-    Set,
-    Type,
 )
 
 from frozendict import frozendict
 
-
-Factory: TypeAlias = Union[Type[Any], Callable[[Any], Any]]
+Factory: TypeAlias = type[Any] | Callable[[Any], Any]
 
 
 @dataclass(frozen=True, init=False)
@@ -54,9 +47,9 @@ class Add(Relationship):
 @dataclass(frozen=True)
 class Parameter:
     factory: Factory
-    relationships: Dict[str, Relationship]
+    relationships: dict[str, Relationship]
 
-    def _parse_relationships(self, rels: Dict[str, Relationship]) -> None:
+    def _parse_relationships(self, rels: dict[str, Relationship]) -> None:
         try:
             signature = inspect.signature(self.factory)
         except ValueError:
@@ -77,9 +70,9 @@ class Parameter:
             try:
                 if origin is None:
                     new_rels[name_] = Assign(annot.__name__.lower())
-                elif issubclass(origin, List):
+                elif issubclass(origin, list):
                     new_rels[name_] = Append(args[0].__name__.lower())
-                elif issubclass(origin, Set):
+                elif issubclass(origin, set):
                     new_rels[name_] = Add(args[0].__name__.lower())
             except TypeError:
                 continue
@@ -101,12 +94,12 @@ class Entity(Parameter):
     в результате.
     """
 
-    id: Union[str, Tuple[str, ...]]
+    id: str | tuple[str, ...]
 
     def __init__(
         self,
         factory: Factory,
-        id_: Union[str, Tuple[str, ...]],
+        id_: str | tuple[str, ...],
         /,
         **relationships: Relationship,
     ) -> None:
@@ -117,7 +110,7 @@ class Entity(Parameter):
         if isinstance(id_, str):
             id_ = (id_.lower(),)
         elif isinstance(id_, tuple):
-            id_ = tuple((_.lower() for _ in id_))
+            id_ = tuple(_.lower() for _ in id_)
 
         object.__setattr__(self, "id", id_)
 

@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Optional, Union
-import threading
-import queue
 import logging
+import queue
+import threading
+from collections.abc import Callable
+from typing import Any
 
 from .conn_validator import ConnectionValidator
 from .dbapi import DBModule
@@ -45,11 +46,11 @@ class ConnectionPool:
 
     # Callable to release a connection. Must return True if the connection
     # may be reused, else False.
-    before_release: Optional[Callable[[ConnType], bool]]
+    before_release: Callable[[ConnType], bool] | None
 
     # Callable called every time a connection is acquired to validate
     # that it is still alive
-    validate: Optional[Callable[[ConnType], bool]]
+    validate: Callable[[ConnType], bool] | None
 
     reached_limit: bool
     connections_created: int
@@ -70,8 +71,8 @@ class ConnectionPool:
         connection_factory,
         timeout: float = 5.0,
         limit: int = 0,
-        validator: Union[ConnectionValidator, str] = "auto",
-        autocommit_setter: Optional[Callable] = None,
+        validator: ConnectionValidator | str = "auto",
+        autocommit_setter: Callable | None = None,
     ):
         self._pool = self.queue_class()
         self.driver = driver
@@ -123,9 +124,8 @@ class ConnectionPool:
             if self.limit:
                 with self.lock:
                     if self.reached_limit:
-                        raise ConnectionLimitError()
-                    else:
-                        return self._connect()
+                        raise ConnectionLimitError
+                    return self._connect()
             else:
                 return self._connect()
 

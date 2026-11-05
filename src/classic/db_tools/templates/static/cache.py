@@ -1,8 +1,7 @@
 import logging
-from typing import Optional, Sequence, Union
-
 import os
 import threading
+from collections.abc import Sequence
 
 from .template import StaticTemplate
 
@@ -17,7 +16,7 @@ class StaticTemplatesCache:
     def __init__(
         self,
         logger: logging.Logger,
-        templates_paths: Sequence[Union[str, os.PathLike]],
+        templates_paths: Sequence[str | os.PathLike],
     ):
         self.logger = logger
         self.cache = {}
@@ -26,8 +25,8 @@ class StaticTemplatesCache:
 
     def get_or_create(
         self,
-        filename: Optional[str] = None,
-        content: Optional[str] = None,
+        filename: str | None = None,
+        content: str | None = None,
     ) -> StaticTemplate:
         if filename:
             key = filename

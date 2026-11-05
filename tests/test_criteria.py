@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
-
 from classic.criteria import And, Criteria, Or, ReturnsFalse, ReturnsTrue
+
 from classic.db_tools.templates.dynamic.criteria_macro import traverse
 
 

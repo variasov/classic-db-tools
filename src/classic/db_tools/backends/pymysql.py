@@ -2,8 +2,8 @@ from typing import cast
 
 import pymysql
 
-from ..conn_validator import ConnectionValidator
-from ..transaction import Transaction
+from classic.db_tools.conn_validator import ConnectionValidator
+from classic.db_tools.transaction import Transaction
 
 
 class PyMySQLTransaction(Transaction, driver=pymysql):
@@ -16,7 +16,7 @@ class PyMySQLTransaction(Transaction, driver=pymysql):
     def _enable_params(self):
         if level := self._params.get("level"):
             level_str = str(level).upper().replace("_", " ")
-            conn = cast(pymysql.Connection, self._current.conn)
+            conn = cast("pymysql.Connection", self._current.conn)
             cursor = conn.cursor()
             try:
                 cursor.execute(
@@ -27,7 +27,7 @@ class PyMySQLTransaction(Transaction, driver=pymysql):
 
     def _restore_params(self):
         if self._params.get("level"):
-            conn = cast(pymysql.Connection, self._current.conn)
+            conn = cast("pymysql.Connection", self._current.conn)
             cursor = conn.cursor()
             try:
                 cursor.execute(
@@ -39,7 +39,7 @@ class PyMySQLTransaction(Transaction, driver=pymysql):
 
     def _start_savepoint(self):
         self._savepoint_name = f"sp_{id(self)}"
-        conn = cast(pymysql.Connection, self._current.conn)
+        conn = cast("pymysql.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"SAVEPOINT {self._savepoint_name}")
@@ -47,7 +47,7 @@ class PyMySQLTransaction(Transaction, driver=pymysql):
             cursor.close()
 
     def _release_savepoint(self):
-        conn = cast(pymysql.Connection, self._current.conn)
+        conn = cast("pymysql.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"RELEASE SAVEPOINT {self._savepoint_name}")
@@ -55,7 +55,7 @@ class PyMySQLTransaction(Transaction, driver=pymysql):
             cursor.close()
 
     def _rollback_savepoint(self):
-        conn = cast(pymysql.Connection, self._current.conn)
+        conn = cast("pymysql.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"ROLLBACK TO SAVEPOINT {self._savepoint_name}")

@@ -1,31 +1,26 @@
-from functools import wraps
 import logging
+from collections.abc import Callable, Sequence
+from functools import wraps
 from os import PathLike
+from pathlib import Path
 from typing import (
-    Dict,
-    TypeVar,
     Any,
     ParamSpec,
-    Union,
-    Sequence,
-    Callable,
-    Optional,
-    Type,
+    TypeVar,
     cast,
     overload,
 )
-from pathlib import Path
 
 from frozendict import frozendict
 
+from .conn_scope import ConnectionScope
+from .dbapi import DBModule
 from .mapping import Mapper, Parameter
 from .pool import ConnectionPool
-from .transaction import Transaction
-from .conn_scope import ConnectionScope
-from .scope import Scope
 from .query import Query
-from .templates import StaticTemplatesCache, DynamicTemplatesCache
-from .dbapi import DBModule
+from .scope import Scope
+from .templates import DynamicTemplatesCache, StaticTemplatesCache
+from .transaction import Transaction
 
 Params = ParamSpec("Params")
 Result = TypeVar("Result")
@@ -61,32 +56,26 @@ class Engine:
 
     current: Scope
 
-    _templates_dirs: Sequence[Union[str, PathLike]]
-    _tx_cls: Type[Transaction]
+    _templates_dirs: Sequence[str | PathLike]
+    _tx_cls: type[Transaction]
     _mapper: Mapper
     _factory: Callable[[], Any]
     _pool: ConnectionPool
-    _pool_cls: Type[ConnectionPool]
+    _pool_cls: type[ConnectionPool]
     _logger: logging.Logger
 
     def __init__(
         self,
         driver: DBModule,
-        factory: Optional[Callable[[], Any]] = None,
+        factory: Callable[[], Any] | None = None,
         /,
-        templates_dirs: Optional[
-            Union[
-                str,
-                PathLike,
-                Sequence[Union[str, PathLike]],
-            ]
-        ] = None,
+        templates_dirs: str | PathLike | Sequence[str | PathLike] | None = None,
         str_templates_static_by_default: bool = False,
-        identifier_quote_char: Optional[str] = None,
-        default_mapping: Optional[dict[str, Parameter]] = None,
-        pool_class: Type[ConnectionPool] = ConnectionPool,
-        pool_kwargs: Optional[Dict[str, Any]] = None,
-        logger: Optional[logging.Logger] = None,
+        identifier_quote_char: str | None = None,
+        default_mapping: dict[str, Parameter] | None = None,
+        pool_class: type[ConnectionPool] = ConnectionPool,
+        pool_kwargs: dict[str, Any] | None = None,
+        logger: logging.Logger | None = None,
     ) -> None:
         """
         Аргументы:
@@ -103,18 +92,24 @@ class Engine:
         str_templates_static_by_default: Регулирует значение по умолчанию
                                          аргмуента static в методе Engine.query.
 
-        identifier_quote_char: Символ кавычек, используемый для экранирования идентификаторов.
-                               Зависит от БД, используемой движком. Может быть ', " и `.
+        identifier_quote_char: Символ кавычек, используемый для
+                               экранирования идентификаторов.
+                               Зависит от БД, используемой движком.
+                               Может быть ', " и `.
 
-        default_mapping: Конфигурация для маппера по умолчанию. Будет использоваться
-                         методом Query.map_to, если при вызове map_to не переданы kwargs.
+        default_mapping: Конфигурация для маппера по умолчанию.
+                         Будет использоваться методом Query.map_to,
+                         если при вызове map_to не переданы kwargs.
 
         pool_class: Класс пула соединений, используемый Engine.
 
-        pool_kwargs: Параметры для пула соединений. Распаковывается в конструктор пула.
+        pool_kwargs: Параметры для пула соединений.
+                     Распаковывается в конструктор пула.
 
-        logger: Кастомный объект logging.Logger для логгирования внутри библиотеки.
-                Если не задан, используется логгер с именем 'classic-db-tools'
+        logger: Кастомный объект logging.Logger для логгирования
+                внутри библиотеки.
+                Если не задан, используется логгер с именем
+                'classic-db-tools'
         """
 
         self.current = Scope()
@@ -179,8 +174,9 @@ class Engine:
         Статические шаблон должны иметь рашсирение .sql,
         динамический - .sql.tmpl.
 
-        При этом объект Query сам по себе произведет загрузку содержимого шаблона
-        не сразу, а при первом обращении к методам, провоцирующим исполнение.
+        При этом объект Query сам по себе произведет загрузку содержимого
+        шаблона не сразу, а при первом обращении к методам,
+        провоцирующим исполнение.
 
         Нужен для работы с файловыми шаблонами SQL.
         """
@@ -192,17 +188,18 @@ class Engine:
         else:
             raise ValueError(f"Unsupported filename extension: {filename}")
         return Query(
-            cast(Callable[[], ConnectionScope], self.conn),
+            cast("Callable[[], ConnectionScope]", self.conn),
             self._mapper,
             lambda: tmpl(filename=filename),
         )
 
-    def query(self, content: str, static: Optional[bool] = None) -> Query:
+    def query(self, content: str, static: bool | None = None) -> Query:
         """
         Возвращает объект-запрос с указанным шаблоном SQL.
 
         Параметр static указывает на тип шаблона.
-        Если передаваемый шаблон содержит макросы Jinja, static должен быть False.
+        Если передаваемый шаблон содержит макросы Jinja,
+        static должен быть False.
 
         Нужен для случаев, когда SQL сгенерирован динамически
         или указывается прямо в Python-коде.
@@ -216,7 +213,7 @@ class Engine:
             tmpl = self.dynamic_templates.get_or_create
 
         return Query(
-            cast(Callable[[], ConnectionScope], self.conn),
+            cast("Callable[[], ConnectionScope]", self.conn),
             self._mapper,
             lambda: tmpl(content=content),
         )
@@ -265,14 +262,13 @@ class Engine:
         """
         if fn is None:
             return self._tx_cls(self._pool, self.current, commit, tx_kwargs)
-        else:
 
-            @wraps(fn)
-            def wrapper(*args: Params.args, **kwargs: Params.kwargs) -> Result:
-                with self.transaction(commit=commit, **tx_kwargs):
-                    return fn(*args, **kwargs)
+        @wraps(fn)
+        def wrapper(*args: Params.args, **kwargs: Params.kwargs) -> Result:
+            with self.transaction(commit=commit, **tx_kwargs):
+                return fn(*args, **kwargs)
 
-            return wrapper
+        return wrapper
 
     @overload
     def conn(
@@ -296,7 +292,8 @@ class Engine:
         При применении как декоратора вернет функцию-обертку, которая при вызове
         обернет в with engine.connect декорируемую функцию.
 
-        Нужно для случаев, когда нужно сделать несколько запросов в одной операции подряд.
+        Нужно для случаев, когда нужно сделать несколько запросов
+        в одной операции подряд.
         """
         if fn is None:
             return ConnectionScope(self._pool, self.current)

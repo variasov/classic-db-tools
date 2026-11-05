@@ -1,4 +1,5 @@
-from typing import Any, NoReturn, Sequence
+from collections.abc import Sequence
+from typing import Any, NoReturn
 
 from .dbapi import CursorDescription, CursorParams, Row
 

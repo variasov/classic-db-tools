@@ -179,7 +179,8 @@ class TestNestedTransaction:
             )
             raise RuntimeError("outer fail")
 
-        pytest.raises(RuntimeError, outer)
+        with pytest.raises(RuntimeError):
+            outer()
         assert (
             engine.query_from("select_item_by_title.sql").one(t="ndr_outer")
             is None

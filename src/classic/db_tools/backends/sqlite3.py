@@ -1,8 +1,8 @@
 import sqlite3
 from typing import cast
 
-from ..conn_validator import ConnectionValidator
-from ..transaction import Transaction
+from classic.db_tools.conn_validator import ConnectionValidator
+from classic.db_tools.transaction import Transaction
 
 
 class Sqlite3Transaction(Transaction, driver=sqlite3):
@@ -11,25 +11,25 @@ class Sqlite3Transaction(Transaction, driver=sqlite3):
         conn.isolation_level = None
 
     def _enable_params(self):
-        conn = cast(sqlite3.Connection, self._current.conn)
+        conn = cast("sqlite3.Connection", self._current.conn)
         conn.isolation_level = None
         conn.execute("BEGIN")
 
     def _restore_params(self):
-        conn = cast(sqlite3.Connection, self._current.conn)
+        conn = cast("sqlite3.Connection", self._current.conn)
         conn.isolation_level = None
 
     def _start_savepoint(self):
         self._savepoint_name = f"savepoint_{id(self)}"
-        conn = cast(sqlite3.Connection, self._current.conn)
+        conn = cast("sqlite3.Connection", self._current.conn)
         conn.execute(f"SAVEPOINT {self._savepoint_name}")
 
     def _release_savepoint(self):
-        conn = cast(sqlite3.Connection, self._current.conn)
+        conn = cast("sqlite3.Connection", self._current.conn)
         conn.execute(f"RELEASE SAVEPOINT {self._savepoint_name}")
 
     def _rollback_savepoint(self):
-        conn = cast(sqlite3.Connection, self._current.conn)
+        conn = cast("sqlite3.Connection", self._current.conn)
         conn.execute(f"ROLLBACK TO SAVEPOINT {self._savepoint_name}")
         conn.execute(f"RELEASE SAVEPOINT {self._savepoint_name}")
 

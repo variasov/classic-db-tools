@@ -2,8 +2,8 @@ from typing import cast
 
 import oracledb
 
-from ..conn_validator import ConnectionValidator
-from ..transaction import Transaction
+from classic.db_tools.conn_validator import ConnectionValidator
+from classic.db_tools.transaction import Transaction
 
 
 class OracleDBTransaction(Transaction, driver=oracledb):
@@ -12,7 +12,7 @@ class OracleDBTransaction(Transaction, driver=oracledb):
         conn.autocommit = True
 
     def _enable_params(self):
-        conn = cast(oracledb.Connection, self._current.conn)
+        conn = cast("oracledb.Connection", self._current.conn)
         conn.autocommit = False
         if level := self._params.get("level"):
             cursor = conn.cursor()
@@ -22,12 +22,12 @@ class OracleDBTransaction(Transaction, driver=oracledb):
                 cursor.close()
 
     def _restore_params(self):
-        conn = cast(oracledb.Connection, self._current.conn)
+        conn = cast("oracledb.Connection", self._current.conn)
         conn.autocommit = True
 
     def _start_savepoint(self):
         self._savepoint_name = f"sp_{id(self)}"
-        conn = cast(oracledb.Connection, self._current.conn)
+        conn = cast("oracledb.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"SAVEPOINT {self._savepoint_name}")
@@ -40,7 +40,7 @@ class OracleDBTransaction(Transaction, driver=oracledb):
         pass
 
     def _rollback_savepoint(self):
-        conn = cast(oracledb.Connection, self._current.conn)
+        conn = cast("oracledb.Connection", self._current.conn)
         cursor = conn.cursor()
         try:
             cursor.execute(f"ROLLBACK TO SAVEPOINT {self._savepoint_name}")

@@ -1,21 +1,22 @@
+import contextlib
 from types import TracebackType
-from typing import Any, Optional, Type, ClassVar, Dict, cast
+from typing import Any, ClassVar, cast
 
-from .pool import ConnectionPool
 from .conn_scope import ConnectionScope
-from .scope import Scope
 from .dbapi import Connection, DBModule
+from .pool import ConnectionPool
+from .scope import Scope
 
 
 class Transaction:
-    implementations: ClassVar[Dict[DBModule, Type["Transaction"]]] = {}
+    implementations: ClassVar[dict[DBModule, type["Transaction"]]] = {}
 
     _conn_pool: ConnectionPool
     _commit_on_exit: bool
-    _conn_scope: Optional[ConnectionScope]
+    _conn_scope: ConnectionScope | None
     _current: Scope
-    _params: Dict[str, Any]
-    _first: Optional[bool]
+    _params: dict[str, Any]
+    _first: bool | None
 
     def __init_subclass__(cls, driver: DBModule, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -30,7 +31,7 @@ class Transaction:
         conn_pool: ConnectionPool,
         current: Scope,
         commit: bool = True,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
     ):
         super().__init__()
         self._conn_pool = conn_pool
@@ -53,7 +54,7 @@ class Transaction:
         raise NotImplementedError
 
     def _rollback_savepoint(self):
-        conn = cast(Connection, self._current.conn)
+        conn = cast("Connection", self._current.conn)
         conn.rollback()
 
     def __enter__(self):
@@ -83,15 +84,15 @@ class Transaction:
             if self._conn_scope:
                 self._conn_scope.__exit__(exc.__class__, exc, None)
                 self._conn_scope = None
-            raise exc
+            raise exc  # noqa: TRY201
 
     def __exit__(
         self,
-        type_: Optional[Type[BaseException]],
-        value: Optional[BaseException],
-        traceback: Optional[TracebackType],
-    ) -> Optional[bool]:
-        conn = cast(Connection, self._current.conn)
+        type_: type[BaseException] | None,
+        value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None:
+        conn = cast("Connection", self._current.conn)
         first = self._first
         exc_info = (type_, value, traceback)
         try:
@@ -106,19 +107,16 @@ class Transaction:
                         conn.commit()
                     else:
                         self._release_savepoint()
+                elif first:
+                    conn.rollback()
                 else:
-                    if first:
-                        conn.rollback()
-                    else:
-                        self._rollback_savepoint()
+                    self._rollback_savepoint()
             except BaseException as exc:
                 exc_info = (type(exc), exc, exc.__traceback__)
                 if first and type_ is None:
                     # Commit failed: the original error matters more
-                    try:
+                    with contextlib.suppress(Exception):
                         conn.rollback()
-                    except Exception:
-                        pass
                 raise
             finally:
                 if first:

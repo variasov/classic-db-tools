@@ -13,9 +13,7 @@ class AutoBind(Extension):
         for token in tokens:
             if token.test("variable_begin"):
                 continue
-            elif token.test("name"):
-                name += token.value
-            elif token.test("dot"):
+            if token.test("name") or token.test("dot"):
                 name += token.value
             else:
                 break

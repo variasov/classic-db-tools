@@ -1,30 +1,23 @@
+from collections.abc import Callable, Generator, Iterator, Sequence
 from functools import partial
 from typing import (
     Any,
-    Generator,
     Generic,
-    Dict,
-    Iterator,
     TypeVar,
-    Type,
-    Callable,
-    Sequence,
-    Union,
     cast,
 )
 
-from ..conn_scope import ConnectionScope
-from ..dbapi import Cursor, Row
-from ..rows import Rows
-from ..templates import Template
+from classic.db_tools.conn_scope import ConnectionScope
+from classic.db_tools.dbapi import Cursor, Row
+from classic.db_tools.rows import Rows
+from classic.db_tools.templates import Template
 
 from .mapper import Mapper
 from .params import Parameter, create_mapping
 from .types import MapperFunc
 
-
-QueryParams = Union[Dict[str, Any], Any]
-Result = TypeVar("Result", bound=Type[object])
+QueryParams = dict[str, Any] | Any
+Result = TypeVar("Result", bound=type[object])
 
 
 class MapperQuery(Generic[Result]):
@@ -41,7 +34,7 @@ class MapperQuery(Generic[Result]):
         tmpl_factory: Callable[[], Template],
         result: str,
         mapper: Mapper,
-        params: Dict[str, Parameter],
+        params: dict[str, Parameter],
     ) -> None:
         self._conn_scope = conn_scope
         self._tmpl_factory = tmpl_factory
@@ -71,7 +64,7 @@ class MapperQuery(Generic[Result]):
         with self._conn_scope() as conn:
             return self._sources(conn.cursor(), prepared)
 
-    def _sources(self, cursor: Cursor, params: Dict[str, Any]) -> str:
+    def _sources(self, cursor: Cursor, params: dict[str, Any]) -> str:
         mapper = self._execute(cursor, params)
         return getattr(mapper, "sources", lambda: "")()
 
@@ -101,7 +94,7 @@ class MapperQuery(Generic[Result]):
         with self._conn_scope() as conn:
             return self._all(conn.cursor(), prepared)
 
-    def _all(self, cursor: Cursor, params: Dict[str, Any]) -> Sequence[Result]:
+    def _all(self, cursor: Cursor, params: dict[str, Any]) -> Sequence[Result]:
         mapper = self._execute(cursor, params)
         return list(mapper(iter(cursor.fetchall())))
 
@@ -147,7 +140,7 @@ class MapperQuery(Generic[Result]):
     def _iter(
         self,
         cursor: Cursor,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         batch: int | None,
     ) -> Iterator[Result]:
         mapper = self._execute(cursor, params)
@@ -184,7 +177,7 @@ class MapperQuery(Generic[Result]):
     def _one(
         self,
         cursor: Cursor,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         batch: int | None,
     ) -> Result | None:
         mapper = self._execute(cursor, params)
@@ -200,19 +193,18 @@ class MapperQuery(Generic[Result]):
     @staticmethod
     def _prepare(
         params: QueryParams,
-        kwargs: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        kwargs: dict[str, Any],
+    ) -> dict[str, Any]:
         if params is None:
             return kwargs
         if isinstance(params, dict):
-            return cast(Dict[str, Any], params)
-        else:
-            return params.__dict__
+            return cast("dict[str, Any]", params)
+        return params.__dict__
 
     def _execute(
         self,
         cursor: Cursor,
-        params: Dict[str, Any],
+        params: dict[str, Any],
     ) -> MapperFunc:
         self._tmpl_factory().execute(cursor, params)
         return self._mapper.func_for_cursor(
@@ -230,13 +222,9 @@ class MapperQuery(Generic[Result]):
         None,
         None,
     ]:
-        if batch:
-            fetch = partial(cursor.fetchmany, batch)
-        else:
-            fetch = cursor.fetchall
+        fetch = partial(cursor.fetchmany, batch) if batch else cursor.fetchall
         while True:
             rows = fetch()
             if not rows:
                 return
-            for row in rows:
-                yield row
+            yield from rows

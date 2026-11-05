@@ -1,5 +1,5 @@
 import threading
-from typing import Any, Dict
+from typing import Any
 
 from .dbapi import Connection
 
@@ -14,7 +14,7 @@ class Scope(threading.local):
     """
 
     conn: Connection | None
-    tx_params: Dict[str, Any] | None
+    tx_params: dict[str, Any] | None
 
     def __init__(self):
         super().__init__()

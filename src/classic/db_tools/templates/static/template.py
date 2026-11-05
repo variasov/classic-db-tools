@@ -1,9 +1,8 @@
 import logging
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from classic.db_tools.dbapi import Cursor, CursorParams
-
-from ..template import Template
+from classic.db_tools.templates.template import Template
 
 
 class StaticTemplate(Template):
@@ -16,14 +15,14 @@ class StaticTemplate(Template):
     def __init__(
         self,
         logger: logging.Logger,
-        filepath: Optional[str] = None,
-        content: Optional[str] = None,
+        filepath: str | None = None,
+        content: str | None = None,
     ):
         self.logger = logger
         assert filepath is None or content is None
         if filepath:
             self.filepath = filepath
-            with open(self.filepath, "rt") as file:
+            with open(self.filepath) as file:
                 self.content = file.read()
         elif content:
             self.filepath = None

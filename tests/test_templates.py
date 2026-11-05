@@ -39,7 +39,7 @@ class TestDynamicTemplates:
         assert result == 3
 
     def test_template_syntax_error(self, engine):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017, PT011
             engine.query(
                 "SELECT {{ invalid | unknown }} AS out",
                 static=False,
