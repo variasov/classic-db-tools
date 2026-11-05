@@ -45,6 +45,7 @@ class DynamicTemplatesCache:
         self.renderer = Renderer()
         self.jinja.add_extension(AutoBind)
         self.jinja.filters['bind'] = self.renderer.bind
+        self.jinja.filters['autobind'] = self.renderer.autobind
         self.jinja.filters['sqlsafe'] = self.renderer.sql_safe
         self.jinja.filters['inclause'] = self.renderer.bind_in_clause
         self.jinja.filters['identifier'] = (

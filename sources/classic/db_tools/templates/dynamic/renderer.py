@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+import re
 import threading
 from typing import Dict, List, Tuple, Union
 
@@ -14,17 +15,46 @@ class Renderer(threading.local):
     """
 
     bind_params: Dict[str, object]
+    bind_values: List[object]
     param_style: str
     param_index: int
 
-    def _bind_param(self, already_bound, key, value):
+    def _auto_name(self, base):
+        """Уникальное имя параметра: очищенный base + порядковый номер."""
+        base = re.sub(r'[^A-Za-z0-9_]', '_', base or '') or 'param'
+        name = '%s_%s' % (base, self.param_index)
+        while name in self.bind_params:
+            name += '_'
+        return name
+
+    def _bind_param(self, value, name=None, auto=True):
+        """
+        Регистрирует значение и возвращает плейсхолдер.
+
+        auto=True: name - подсказка, к ней добавляется порядковый номер,
+        имя уникально в рамках рендера. auto=False: name - явное имя,
+        используется как есть.
+        """
         self.param_index += 1
-        # TODO: придумать, как с этим жить
-        #new_key = '%s_%s' % (key, self.param_index)
-        new_key = key
-        already_bound[new_key] = value
+        if auto or not name:
+            new_key = self._auto_name(name if auto else None)
+        else:
+            new_key = name
 
         param_style = self.param_style
+        if param_style in ('named', 'pyformat'):
+            if new_key in self.bind_params:
+                old = self.bind_params[new_key]
+                if old is not value and old != value:
+                    raise ValueError(
+                        'Bind parameter name "%s" is used twice with '
+                        'different values (%r and %r)'
+                        % (new_key, old, value)
+                    )
+            self.bind_params[new_key] = value
+        else:
+            self.bind_values.append(value)
+
         if param_style == 'qmark':
             return '?'
         elif param_style == 'format':
@@ -45,25 +75,31 @@ class Renderer(threading.local):
         in a SQL statement"""
         return Markup(value)
 
-    def bind(self, value, name):
+    def bind(self, value, name=None):
         """A filter that prints %s, and stores the value
         in an array, so that it can be bound using a prepared statement
 
-        This filter is automatically applied to every {{variable}}
-        during the lexing stage, so developers can't forget to bind
+        Явное имя используется как есть; без имени оно генерируется.
         """
         if isinstance(value, Markup):
             return value
-        else:
-            return self._bind_param(self.bind_params, name, value)
+        return self._bind_param(value, name, auto=name is None)
+
+    def autobind(self, value, name=''):
+        """Filter automatically applied to every {{variable}}
+        during the lexing stage, so developers can't forget to bind.
+
+        name - текст выражения, к нему добавляется уникальный суффикс.
+        """
+        if isinstance(value, Markup):
+            return value
+        return self._bind_param(value, name, auto=True)
 
     def bind_in_clause(self, value):
         values = list(value)
-        results = []
-        for idx, v in enumerate(values):
-            results.append(
-                self._bind_param(self.bind_params, f'inclause_{idx}', v)
-            )
+        if not values:
+            return '(NULL)'
+        results = [self._bind_param(v, 'inclause') for v in values]
 
         clause = ','.join(results)
         clause = '(' + clause + ')'
@@ -97,6 +133,7 @@ class Renderer(threading.local):
         param_style: str,
     ) -> Tuple[str, Union[Dict[str, object], List[object]]]:
         self.bind_params = {}
+        self.bind_values = []
         self.param_style = param_style
         self.param_index = 0
         try:
@@ -104,11 +141,12 @@ class Renderer(threading.local):
             if self.param_style in ('named', 'pyformat'):
                 bind_params = dict(self.bind_params)
             elif self.param_style in ('qmark', 'numeric', 'format', 'asyncpg'):
-                bind_params = list(self.bind_params.values())
+                bind_params = list(self.bind_values)
             else:
                 raise NotImplementedError
             return query, bind_params
         finally:
             del self.bind_params
+            del self.bind_values
             del self.param_style
             del self.param_index

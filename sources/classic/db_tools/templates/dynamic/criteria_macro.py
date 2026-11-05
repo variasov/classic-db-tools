@@ -31,11 +31,14 @@ def traverse(criteria: CriteriaNode[Any], translators) -> str:
     elif isinstance(criteria, Xor):
         # XOR есть не во всех СУБД (нет в PostgreSQL и SQLite),
         # поэтому раскрываем: (A AND NOT B) OR (NOT A AND B).
-        left = traverse(criteria.left, translators)
-        right = traverse(criteria.right, translators)
-        return (
-            '((({0}) AND NOT ({1})) OR (NOT ({0}) AND ({1})))'
-        ).format(left, right)
+        # Каждое вхождение рендерится заново: для позиционных
+        # paramstyle у каждого плейсхолдера должно быть своё значение.
+        return '((({}) AND NOT ({})) OR (NOT ({}) AND ({})))'.format(
+            traverse(criteria.left, translators),
+            traverse(criteria.right, translators),
+            traverse(criteria.left, translators),
+            traverse(criteria.right, translators),
+        )
     elif isinstance(criteria, Invert):
         return 'NOT ({})'.format(traverse(criteria.nested, translators))
     elif isinstance(criteria, ReturnsTrue):

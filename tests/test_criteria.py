@@ -27,12 +27,6 @@ class NoMacro(Criteria):
     pass
 
 
-# Xor рендерит A и B дважды; на qmark (sqlite) это упирается в L1
-# (bind-параметры именуются по тексту выражения).
-XOR_QMARK = pytest.mark.xfail(
-    reason='L1: повторный рендер одного выражения на qmark', strict=True,
-)
-
 ITEMS = 'criteria/items.sql.tmpl'
 
 
@@ -85,13 +79,11 @@ class TestTraverse:
             '(((T) AND NOT (V)) OR (NOT (T) AND (V)))'
         )
 
-    @XOR_QMARK
     def test_xor(self, engine, items):
         crit = ValueGt(8) ^ IdGe(2)
         # a: T^F, b: T^T, c: T^T, d: F^T
         assert titles(engine, crit) == ['a', 'd']
 
-    @XOR_QMARK
     def test_xor_in_and(self, engine, items):
         crit = (ValueGt(8) ^ IdGe(2)) & TitleIs('d')
         assert titles(engine, crit) == ['d']
