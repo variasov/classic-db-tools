@@ -1,9 +1,8 @@
-import ast
 import inspect
+import keyword
+import re
 import threading
 from collections import defaultdict
-from collections.abc import Generator, Iterable
-from itertools import chain
 from typing import (
     Any,
     NamedTuple,
@@ -17,7 +16,6 @@ from .params import (
     Append,
     Assign,
     Entity,
-    Factory,
     Mapping,
     Parameter,
     Relationship,
@@ -104,7 +102,7 @@ def plan_factory_call(
         if p.kind is not inspect.Parameter.VAR_KEYWORD
     }
     positional: list[Field] = []
-    keyword: list[Field] = []
+    keyword_: list[Field] = []
     accept_positional = True
     for name, p in signature.parameters.items():
         if p.kind in (
@@ -119,13 +117,13 @@ def plan_factory_call(
             ):
                 positional.append(name)
             else:
-                keyword.append(name)
+                keyword_.append(name)
         else:
             # Пропуск параметра: последующие поля позиционно не подать.
             accept_positional = False
     # Поля вне сигнатуры (уйдут в **kw или дадут TypeError, как и раньше).
-    keyword.extend(f for f in fields if f not in named)
-    return FactoryCallPlan(tuple(positional), tuple(keyword))
+    keyword_.extend(f for f in fields if f not in named)
+    return FactoryCallPlan(tuple(positional), tuple(keyword_))
 
 
 class Context:
@@ -166,12 +164,6 @@ class Context:
         except TypeError:
             return "item"
 
-    def namespace(self) -> dict[str, Factory]:
-        return {
-            mapper.factory.__name__: mapper.factory
-            for mapper in self.mapper.values()
-        }
-
     def parse_columns(
         self,
         columns: tuple[Column, ...],
@@ -205,607 +197,283 @@ class Context:
             self.fields_to_columns[prefix][field_name] = index_, column
 
 
+# Имена, занятые самим сгенерированным кодом
+RESERVED = {
+    "row", "rows", "row_", "obj", "last_obj", "obj_with_rels",
+    "result", "set", "map", "id",
+}
+
+
+def safe_ident(name: str, used: set[str]) -> str:
+    """Превращает префикс/поле в валидный и уникальный идентификатор."""
+    ident = re.sub(r"\W", "_", name)
+    if not ident or ident[0].isdigit():
+        ident = "_" + ident
+    if keyword.iskeyword(ident):
+        ident += "_"
+    base = ident
+    i = 2
+    while ident in used:
+        ident = f"{base}_{i}"
+        i += 1
+    used.add(ident)
+    return ident
+
+
+def is_ident(name: str) -> bool:
+    return name.isidentifier() and not keyword.iskeyword(name)
+
+
+class StringCodegen:
+    """Генератор исходного кода функции-маппера по контексту запроса.
+
+    Фабрики прокидываются в глобальные имена модуля как f0..fN,
+    что устраняет коллизии по __name__ и конфликты с builtins.
+    """
+
+    def __init__(self, ctx: Context) -> None:
+        self.ctx = ctx
+        self.used: set[str] = set(RESERVED)
+        # префикс -> (имя map-функции, имя переменной объекта, имя idmap)
+        self.names: dict[Prefix, tuple[str, str, str]] = {}
+        for prefix in ctx.mapper:
+            base = safe_ident(prefix, self.used)
+            self.names[prefix] = (
+                f"map_{base}",
+                safe_ident(f"{prefix}_obj", self.used),
+                safe_ident(f"{prefix}_map", self.used),
+            )
+        # имена дедуп-множеств для (prefix, rel_field)
+        self.relset_names: dict[tuple[Prefix, Field], str] = {}
+        for prefix, rels in ctx.rels.items():
+            for field, rel in rels.items():
+                if isinstance(rel, (Append, Add)):
+                    self.relset_names[(prefix, field)] = safe_ident(
+                        f"{prefix}_{field}_seen", self.used,
+                    )
+        # фабрики -> глобальные имена f0..fN
+        self.factory_names: dict[int, str] = {}
+        self.namespace: dict[str, Any] = {}
+        for i, param in enumerate(ctx.mapper.values()):
+            fname = f"f{i}"
+            self.factory_names[id(param.factory)] = fname
+            self.namespace[fname] = param.factory
+        self.lines: list[str] = []
+
+    def emit(self, indent: int, line: str) -> None:
+        self.lines.append("    " * indent + line)
+
+    def factory_ref(self, param: Parameter) -> str:
+        return self.factory_names[id(param.factory)]
+
+    def factory_call(self, prefix: Prefix, param: Parameter) -> str:
+        plan = self.ctx.factory_plans[prefix]
+        fields = self.ctx.fields_to_columns[prefix]
+        ref = self.factory_ref(param)
+        args = [f"row[{fields[f][INDEX]}]" for f in plan.positional]
+        kw = plan.keyword
+        if all(is_ident(f) for f in kw):
+            args += [f"{f}=row[{fields[f][INDEX]}]" for f in kw]
+        elif kw:
+            pairs = ", ".join(
+                f"{f!r}: row[{fields[f][INDEX]}]" for f in kw
+            )
+            args.append(f"**{{{pairs}}}")
+        return f"{ref}({', '.join(args)})"
+
+    def render_none_check(self, columns: list[int]) -> str:
+        parts = [f"row[{c}] is None" for c in columns]
+        if len(parts) == 1:
+            return parts[0]
+        return "(" + " and ".join(parts) + ")"
+
+    def render_rel(
+        self,
+        prefix: Prefix,
+        field: Field,
+        rel: Relationship,
+        accessor: Accessor,
+        indent: int,
+    ) -> None:
+        ctx = self.ctx
+        right: Prefix = rel.target
+        right_param = ctx.mapper[right]
+        right_mapfn, right_var, _ = self.names[right]
+        _, left_var, _ = self.names[prefix]
+
+        if isinstance(rel, Assign):
+            attr_form = accessor == "attr" and is_ident(field)
+            if isinstance(right_param, Entity):
+                self.emit(indent, f"{right_var}, _ = {right_mapfn}(row)")
+                if attr_form:
+                    self.emit(indent, f"{left_var}.{field} = {right_var}")
+                elif accessor == "attr":
+                    self.emit(
+                        indent,
+                        f"setattr({left_var}, {field!r}, {right_var})",
+                    )
+                else:
+                    self.emit(indent, f"{left_var}[{field!r}] = {right_var}")
+            elif attr_form:
+                self.emit(indent, f"{left_var}.{field} = {right_mapfn}(row)")
+            elif accessor == "attr":
+                self.emit(
+                    indent,
+                    f"setattr({left_var}, {field!r}, {right_mapfn}(row))",
+                )
+            else:
+                self.emit(
+                    indent,
+                    f"{left_var}[{field!r}] = {right_mapfn}(row)",
+                )
+            return
+
+        # Append / Add
+        method = "append" if isinstance(rel, Append) else "add"
+        if accessor == "item":
+            default = "[]" if isinstance(rel, Append) else "set()"
+            self.emit(indent, f"if {field!r} not in {left_var}:")
+            self.emit(indent + 1, f"{left_var}[{field!r}] = {default}")
+            coll = f"{left_var}[{field!r}]"
+        elif is_ident(field):
+            coll = f"{left_var}.{field}"
+        else:
+            coll = f"getattr({left_var}, {field!r})"
+
+        relset = self.relset_names[(prefix, field)]
+        if isinstance(right_param, Entity):
+            right_id = f"{right_var}_id"
+            self.emit(indent, f"{right_var}, {right_id} = {right_mapfn}(row)")
+            self.emit(
+                indent,
+                f"if {right_var} is not None "
+                f"and {right_id} not in {relset}:",
+            )
+            self.emit(indent + 1, f"{relset}.add({right_id})")
+            self.emit(indent + 1, f"{coll}.{method}({right_var})")
+        else:
+            self.emit(indent, f"{right_var} = {right_mapfn}(row)")
+            self.emit(indent, f"if {right_var} is not None:")
+            self.emit(indent + 1, f"{coll}.{method}({right_var})")
+
+    def render_entity(
+        self,
+        prefix: Prefix,
+        entity: Entity,
+        indent: int,
+    ) -> None:
+        ctx = self.ctx
+        mapfn, var, idmap = self.names[prefix]
+        fields = ctx.fields_to_columns[prefix]
+        id_columns = [
+            cols[INDEX] for f, cols in fields.items() if f in entity.id
+        ]
+
+        self.emit(indent, f"def {mapfn}(row):")
+        i = indent + 1
+        self.emit(i, f"if {self.render_none_check(id_columns)}:")
+        self.emit(i + 1, "return (None, None)")
+        if len(entity.id) == 1:
+            id_col = fields[entity.id[0]][INDEX]
+            self.emit(i, f"{var}_id = row[{id_col}]")
+        else:
+            cols = ", ".join(f"row[{fields[f][INDEX]}]" for f in entity.id)
+            self.emit(i, f"{var}_id = ({cols},)")
+        self.emit(i, f"obj_with_rels = {idmap}.get({var}_id)")
+        self.emit(i, "if obj_with_rels is None:")
+        self.emit(i + 1, f"{var} = {self.factory_call(prefix, entity)}")
+        rel_sets = [
+            self.relset_names[(prefix, f_)]
+            for f_, r_ in ctx.rels[prefix].items()
+            if isinstance(r_, (Append, Add))
+        ]
+        for relset in rel_sets:
+            self.emit(i + 1, f"{relset} = set()")
+        stored = ", ".join([var, *rel_sets])
+        self.emit(i + 1, f"{idmap}[{var}_id] = ({stored},)")
+        self.emit(i, "else:")
+        self.emit(i + 1, f"({stored},) = obj_with_rels")
+        for field, rel in ctx.rels[prefix].items():
+            self.render_rel(prefix, field, rel, ctx.accessor(entity), i)
+        self.emit(i, f"return ({var}, {var}_id)")
+
+    def render_value(
+        self,
+        prefix: Prefix,
+        value: Value,
+        indent: int,
+    ) -> None:
+        ctx = self.ctx
+        mapfn, var, _ = self.names[prefix]
+        fields = ctx.fields_to_columns[prefix]
+        columns = [cols[INDEX] for cols in fields.values()]
+
+        self.emit(indent, f"def {mapfn}(row):")
+        i = indent + 1
+        if value.reduce_none:
+            self.emit(i, f"if {self.render_none_check(columns)}:")
+            self.emit(i + 1, "return None")
+        self.emit(i, f"{var} = {self.factory_call(prefix, value)}")
+        for field, rel in ctx.rels[prefix].items():
+            self.render_rel(prefix, field, rel, ctx.accessor(value), i)
+        self.emit(i, f"return {var}")
+
+    def render_cycle(self, indent: int) -> None:
+        ctx = self.ctx
+        mapfn, _, _ = self.names[ctx.result.prefix]
+        self.emit(indent, "last_obj = None")
+        self.emit(indent, "for row_ in rows:")
+        if isinstance(ctx.result.param, Entity):
+            self.emit(indent + 1, f"obj, _ = {mapfn}(row_)")
+        else:
+            self.emit(indent + 1, f"obj = {mapfn}(row_)")
+        self.emit(indent + 1, "if last_obj is not obj:")
+        self.emit(indent + 2, "if last_obj is not None:")
+        self.emit(indent + 3, "yield last_obj")
+        self.emit(indent + 2, "last_obj = obj")
+        self.emit(indent, "if last_obj is not None:")
+        self.emit(indent + 1, "yield last_obj")
+
+    def build(self) -> str:
+        ctx = self.ctx
+        header = ", ".join(
+            f"{self.factory_ref(param)}="
+            f"{getattr(param.factory, '__name__', '<factory>')}"
+            for param in ctx.mapper.values()
+        )
+        self.emit(0, f"# factories: {header}")
+        self.emit(0, "def mapper_func(rows):")
+        for prefix, param in ctx.mapper.items():
+            if isinstance(param, Entity):
+                _, _, idmap = self.names[prefix]
+                self.emit(1, f"{idmap} = {{}}")
+        for prefix, param in ctx.mapper.items():
+            if isinstance(param, Entity):
+                self.render_entity(prefix, param, 1)
+            elif isinstance(param, Value):
+                self.render_value(prefix, param, 1)
+            else:
+                raise NotImplementedError
+            self.emit(0, "")
+        self.render_cycle(1)
+        return "\n".join(self.lines) + "\n"
+
+
 def compile_mapper_func(
     result: str,
     mapper: Mapping,
     columns: tuple[Column, ...],
 ) -> MapperFunc[Any]:
     ctx = Context(result, mapper, columns)
+    codegen = StringCodegen(ctx)
+    source = codegen.build()
 
-    # Mapping class_name: Class
-    namespace = ctx.namespace()
+    code = compile(source, "<mapper>", "exec")
+    exec(code, codegen.namespace)
 
-    # AST Tree with module
-    ast_module = render_module(ctx)
-
-    # Compile func
-    code = compile(ast_module, "<string>", "exec")
-    exec(code, namespace)
-
-    func: Any = namespace["mapper_func"]
+    func: Any = codegen.namespace["mapper_func"]
 
     # Add source code to func for easy debugging
-    func.sources = lambda: ast.unparse(ast_module)
+    func.sources = lambda: source
 
     return cast("MapperFunc[Any]", func)
-
-
-def render_identity_maps(ctx: Context) -> Iterable[ast.stmt]:
-    for prefix, mapper in ctx.mapper.items():
-        if isinstance(mapper, Entity):
-            yield ast.Assign(
-                [ast.Name(f"{prefix}_map", ast.Store())],
-                ast.Dict(keys=[], values=[]),
-            )
-
-
-def render_last_obj() -> ast.stmt:
-    return ast.Assign(
-        [ast.Name("last_obj", ast.Store())],
-        ast.Constant(None),
-    )
-
-
-def render_cycle(ctx: Context) -> ast.stmt:
-    if isinstance(ctx.result.param, Entity):
-        assign_stmt = ast.Assign(
-            [
-                ast.Tuple(
-                    [
-                        ast.Name("obj", ast.Store()),
-                        ast.Name("_", ast.Store()),
-                    ],
-                    ast.Store(),
-                ),
-            ],
-            ast.Call(
-                func=ast.Name(f"map_{ctx.result.prefix}", ast.Load()),
-                args=[ast.Name("row_", ast.Load())],
-                keywords=[],
-            ),
-        )
-    elif isinstance(ctx.result.param, Value):
-        assign_stmt = ast.Assign(
-            [ast.Name("obj", ast.Store())],
-            ast.Call(
-                func=ast.Name(f"map_{ctx.result.prefix}", ast.Load()),
-                args=[ast.Name("row_", ast.Load())],
-                keywords=[],
-            ),
-        )
-    else:
-        raise NotImplementedError
-
-    return ast.For(
-        target=ast.Name("row_", ast.Store()),
-        iter=ast.Name("rows", ast.Load()),
-        body=[
-            assign_stmt,
-            ast.If(
-                test=ast.Compare(
-                    left=ast.Name("last_obj", ast.Load()),
-                    ops=[ast.IsNot()],
-                    comparators=[ast.Name("obj", ast.Load())],
-                ),
-                body=[
-                    ast.If(
-                        test=ast.Compare(
-                            left=ast.Name("last_obj", ast.Load()),
-                            ops=[ast.IsNot()],
-                            comparators=[ast.Constant(None)],
-                        ),
-                        body=[
-                            ast.Expr(
-                                ast.Yield(ast.Name("last_obj", ast.Load()))
-                            ),
-                        ],
-                        orelse=[],
-                    ),
-                    ast.Assign(
-                        [ast.Name("last_obj", ast.Store())],
-                        ast.Name("obj", ast.Load()),
-                    ),
-                ],
-                orelse=[],
-            ),
-        ],
-        orelse=[],
-    )
-
-
-def render_check_for_none(columns: list[int]) -> ast.expr:
-    if len(columns) == 1:
-        return ast.Compare(
-            left=ast.Subscript(
-                ast.Name("row", ast.Load()),
-                ast.Constant(columns[0]),
-                ast.Load(),
-            ),
-            ops=[ast.Is()],
-            comparators=[ast.Constant(None)],
-        )
-    return ast.BoolOp(
-        op=ast.And(),
-        values=[
-            ast.Compare(
-                left=ast.Subscript(
-                    ast.Name("row", ast.Load()),
-                    ast.Constant(column),
-                    ast.Load(),
-                ),
-                ops=[ast.Is()],
-                comparators=[ast.Constant(None)],
-            )
-            for column in columns
-        ],
-    )
-
-
-def render_factory_call(
-    ctx: Context,
-    prefix: Prefix,
-    param: Parameter,
-) -> ast.Assign:
-    plan = ctx.factory_plans[prefix]
-    fields = ctx.fields_to_columns[prefix]
-
-    def subscript(field: Field) -> ast.Subscript:
-        return ast.Subscript(
-            ast.Name("row", ast.Load()),
-            ast.Constant(fields[field][INDEX]),
-            ast.Load(),
-        )
-
-    return ast.Assign(
-        [ast.Name(prefix, ast.Store())],
-        ast.Call(
-            func=ast.Name(param.factory.__name__, ast.Load()),
-            args=[subscript(field) for field in plan.positional],
-            keywords=[
-                ast.keyword(field, subscript(field))
-                for field in plan.keyword
-            ],
-        ),
-    )
-
-
-def render_mapper_call(prefix: Prefix) -> ast.expr:
-    return ast.Call(
-        func=ast.Name(f"map_{prefix}", ast.Load()),
-        args=[ast.Name("row", ast.Load())],
-        keywords=[],
-    )
-
-
-def render_rel_factory_call(
-    ctx: Context,
-    left: Prefix,
-    field: Field,
-    rel: Relationship,
-    accessor: Accessor,
-) -> Generator[ast.stmt, None, None]:
-    right: Prefix = rel.target
-    right_mapper = ctx.mapper[right]
-
-    if isinstance(rel, Assign):
-        target = (
-            ast.Attribute(
-                ast.Name(left, ast.Load()),
-                field,
-                ast.Store(),
-            )
-            if accessor == "attr"
-            else ast.Subscript(
-                ast.Name(left, ast.Load()),
-                ast.Constant(field),
-                ast.Store(),
-            )
-        )
-        if isinstance(right_mapper, Entity):
-            yield ast.Assign(
-                [
-                    ast.Tuple(
-                        [target, ast.Name("_", ast.Store())], ast.Store()
-                    ),
-                ],
-                render_mapper_call(right),
-            )
-        elif isinstance(right_mapper, Value):
-            yield ast.Assign(
-                [target],
-                render_mapper_call(right),
-            )
-        else:
-            raise NotImplementedError
-
-    elif isinstance(rel, (Append, Add)):
-        if accessor == "item":
-            if isinstance(rel, Append):
-                default = ast.List([], ast.Load())
-            else:  # Add
-                default = ast.Set([])
-
-            yield ast.If(
-                test=ast.Compare(
-                    left=ast.Constant(field),
-                    ops=[ast.NotIn()],
-                    comparators=[ast.Name(left, ast.Load())],
-                ),
-                body=[
-                    ast.Assign(
-                        [
-                            ast.Subscript(
-                                ast.Name(left, ast.Load()),
-                                ast.Constant(field),
-                                ast.Store(),
-                            ),
-                        ],
-                        default,
-                    )
-                ],
-                orelse=[],
-            )
-            value = ast.Subscript(
-                ast.Name(left, ast.Load()),
-                ast.Constant(field),
-                ast.Load(),
-            )
-        else:
-            value = ast.Attribute(
-                ast.Name(left, ast.Load()),
-                field,
-                ast.Load(),
-            )
-
-        if isinstance(right_mapper, Entity):
-            yield ast.Assign(
-                [
-                    ast.Tuple(
-                        [
-                            ast.Name(right, ast.Store()),
-                            ast.Name(f"{right}_id", ast.Store()),
-                        ],
-                        ast.Store(),
-                    ),
-                ],
-                ast.Call(
-                    func=ast.Name(f"map_{right}", ast.Load()),
-                    args=[ast.Name("row", ast.Load())],
-                    keywords=[],
-                ),
-            )
-            yield ast.If(
-                test=ast.BoolOp(
-                    ast.And(),
-                    [
-                        ast.Compare(
-                            ast.Name(right, ast.Load()),
-                            [ast.IsNot()],
-                            [ast.Constant(None)],
-                        ),
-                        ast.Compare(
-                            ast.Name(f"{right}_id", ast.Load()),
-                            [ast.NotIn()],
-                            [ast.Name(f"{left}_{field}", ast.Load())],
-                        ),
-                    ],
-                ),
-                body=[
-                    ast.Expr(
-                        ast.Call(
-                            func=ast.Attribute(
-                                ast.Name(
-                                    f"{left}_{field}",
-                                    ast.Load(),
-                                ),
-                                "add",
-                                ast.Load(),
-                            ),
-                            args=[ast.Name(f"{right}_id", ast.Load())],
-                            keywords=[],
-                        )
-                    ),
-                    ast.Expr(
-                        ast.Call(
-                            func=ast.Attribute(
-                                value,
-                                rel.__class__.__name__.lower(),
-                                ast.Load(),
-                            ),
-                            args=[ast.Name(right, ast.Load())],
-                            keywords=[],
-                        )
-                    ),
-                ],
-                orelse=[],
-            )
-        elif isinstance(right_mapper, Value):
-            yield ast.Assign(
-                [ast.Name(right, ast.Store())],
-                ast.Call(
-                    func=ast.Name(f"map_{right}", ast.Load()),
-                    args=[ast.Name("row", ast.Load())],
-                    keywords=[],
-                ),
-            )
-            yield ast.If(
-                test=ast.Compare(
-                    ast.Name(right, ast.Load()),
-                    [ast.IsNot()],
-                    [ast.Constant(None)],
-                ),
-                body=[
-                    ast.Expr(
-                        ast.Call(
-                            func=ast.Attribute(
-                                value,
-                                rel.__class__.__name__.lower(),
-                                ast.Load(),
-                            ),
-                            args=[ast.Name(right, ast.Load())],
-                            keywords=[],
-                        )
-                    )
-                ],
-                orelse=[],
-            )
-        else:
-            raise NotImplementedError
-    else:
-        raise NotImplementedError
-
-
-def render_obj_id(ctx: Context, prefix: Prefix, entity: Entity) -> ast.stmt:
-    if len(entity.id) == 1:
-        id_field = entity.id[0]
-        id_col = ctx.fields_to_columns[prefix][id_field][INDEX]
-        id_val = ast.Subscript(
-            ast.Name("row", ast.Load()),
-            ast.Constant(id_col),
-            ast.Load(),
-        )
-    else:
-        id_val = ast.Tuple(
-            [
-                ast.Subscript(
-                    ast.Name("row", ast.Load()),
-                    ast.Constant(ctx.fields_to_columns[prefix][field][INDEX]),
-                    ast.Load(),
-                )
-                for field in entity.id
-            ],
-            ast.Load(),
-        )
-
-    return ast.Assign([ast.Name(f"{prefix}_id", ast.Store())], id_val)
-
-
-def render_get_or_create(
-    ctx: Context,
-    prefix: Prefix,
-    param: Parameter,
-) -> Generator[ast.stmt, None, None]:
-    yield ast.Assign(
-        [ast.Name("obj_with_rels", ast.Store())],
-        ast.Call(
-            func=ast.Attribute(
-                ast.Name(f"{prefix}_map", ast.Load()), "get", ast.Load()
-            ),
-            args=[ast.Name(f"{prefix}_id", ast.Load())],
-            keywords=[],
-        ),
-    )
-
-    rel_names = [
-        f"{prefix}_{field}"
-        for field, rel in ctx.rels[prefix].items()
-        if isinstance(rel, (Append, Add))
-    ]
-    if_body: list[ast.stmt] = [
-        render_factory_call(ctx, prefix, param),
-        *(
-            ast.Assign(
-                [ast.Name(name, ast.Store())],
-                ast.Call(ast.Name("set", ast.Load()), [], []),
-            )
-            for name in rel_names
-        ),
-        ast.Assign(
-            [
-                ast.Subscript(
-                    ast.Name(f"{prefix}_map", ast.Load()),
-                    ast.Name(f"{prefix}_id", ast.Load()),
-                    ast.Store(),
-                )
-            ],
-            ast.Tuple(
-                [
-                    ast.Name(prefix, ast.Load()),
-                    *(ast.Name(name, ast.Load()) for name in rel_names),
-                ],
-                ast.Load(),
-            ),
-        ),
-    ]
-    else_body: list[ast.stmt] = [
-        ast.Assign(
-            [
-                ast.Tuple(
-                    [
-                        ast.Name(prefix, ast.Store()),
-                        *(ast.Name(name, ast.Store()) for name in rel_names),
-                    ],
-                    ast.Store(),
-                ),
-            ],
-            ast.Name("obj_with_rels", ast.Load()),
-        ),
-    ]
-
-    yield ast.If(
-        test=ast.Compare(
-            left=ast.Name("obj_with_rels", ast.Load()),
-            ops=[ast.Is()],
-            comparators=[ast.Constant(None)],
-        ),
-        body=if_body,
-        orelse=else_body,
-    )
-
-
-def render_entity(ctx: Context, prefix: Prefix, entity: Entity) -> ast.stmt:
-    id_columns = [
-        cols[INDEX]
-        for field, cols in ctx.fields_to_columns[prefix].items()
-        if field in entity.id
-    ]
-    body = [
-        ast.If(
-            test=render_check_for_none(id_columns),
-            body=[
-                ast.Return(
-                    ast.Tuple(
-                        [
-                            ast.Constant(None),
-                            ast.Constant(None),
-                        ],
-                        ast.Load(),
-                    ),
-                ),
-            ],
-            orelse=[],
-        ),
-        render_obj_id(ctx, prefix, entity),
-        *render_get_or_create(ctx, prefix, entity),
-        *chain.from_iterable(
-            render_rel_factory_call(
-                ctx,
-                prefix,
-                field,
-                rel,
-                ctx.accessor(entity),
-            )
-            for field, rel in ctx.rels[prefix].items()
-        ),
-        ast.Return(
-            ast.Tuple(
-                [
-                    ast.Name(prefix, ast.Load()),
-                    ast.Name(f"{prefix}_id", ast.Load()),
-                ],
-                ast.Load(),
-            ),
-        ),
-    ]
-    return ast.FunctionDef(
-        name=f"map_{prefix}",
-        args=ast.arguments(
-            posonlyargs=[],
-            args=[
-                ast.arg(arg="row"),
-            ],
-            kwonlyargs=[],
-            kw_defaults=[],
-            defaults=[],
-        ),
-        body=body,
-        decorator_list=[],
-    )
-
-
-def render_value(
-    ctx: Context,
-    prefix: Prefix,
-    value: Value,
-) -> ast.stmt:
-    columns = [col_[INDEX] for col_ in ctx.fields_to_columns[prefix].values()]
-    if_body: list[ast.stmt] = []
-    if value.reduce_none:
-        if_body.append(
-            ast.If(
-                test=render_check_for_none(columns),
-                body=[ast.Return(ast.Constant(None))],
-                orelse=[],
-            ),
-        )
-    if_body += [
-        render_factory_call(ctx, prefix, value),
-        *chain.from_iterable(
-            render_rel_factory_call(
-                ctx,
-                prefix,
-                field,
-                rel,
-                ctx.accessor(value),
-            )
-            for field, rel in ctx.rels[prefix].items()
-        ),
-        ast.Return(
-            ast.Name(prefix, ast.Load()),
-        ),
-    ]
-    return ast.FunctionDef(
-        name=f"map_{prefix}",
-        args=ast.arguments(
-            posonlyargs=[],
-            args=[
-                ast.arg(arg="row"),
-            ],
-            kwonlyargs=[],
-            kw_defaults=[],
-            defaults=[],
-        ),
-        body=if_body,
-        decorator_list=[],
-    )
-
-
-def render_mappers(ctx: Context) -> Generator[ast.stmt, None, None]:
-    for prefix, mapper in ctx.mapper.items():
-        if isinstance(mapper, Entity):
-            yield render_entity(ctx, prefix, mapper)
-        elif isinstance(mapper, Value):
-            yield render_value(ctx, prefix, mapper)
-        else:
-            raise NotImplementedError
-
-
-def render_return() -> ast.stmt:
-    return ast.If(
-        test=ast.Compare(
-            left=ast.Name("last_obj", ast.Load()),
-            ops=[ast.IsNot()],
-            comparators=[ast.Constant(None)],
-        ),
-        body=[ast.Expr(ast.Yield(ast.Name("last_obj", ast.Load())))],
-        orelse=[],
-    )
-
-
-def render_mapper_func(ctx: Context) -> ast.stmt:
-    return ast.FunctionDef(
-        name="mapper_func",
-        args=ast.arguments(
-            posonlyargs=[],
-            args=[
-                ast.arg(arg="rows"),
-            ],
-            kwonlyargs=[],
-            kw_defaults=[],
-            defaults=[],
-        ),
-        body=[
-            *render_identity_maps(ctx),
-            *render_mappers(ctx),
-            render_last_obj(),
-            render_cycle(ctx),
-            render_return(),
-        ],
-        decorator_list=[],
-    )
-
-
-def render_module(ctx: Context) -> ast.Module:
-    func = render_mapper_func(ctx)
-    module = ast.Module(body=[func], type_ignores=[])
-    return ast.fix_missing_locations(module)
