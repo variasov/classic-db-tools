@@ -418,7 +418,7 @@ class Query(Generic[RowT]):
         if isinstance(params, dict):
             if kwargs:
                 return {**params, **kwargs}
-            return params
+            return cast("dict[str, Any]", params)
         if isinstance(params, tuple):
             return cast("dict[str, Any]", params)
         return {**params.__dict__, **kwargs}

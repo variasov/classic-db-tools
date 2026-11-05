@@ -272,7 +272,7 @@ class TestMappingRelationships:
             .one()
         )
         assert parent is not None
-        assert parent.child is not None
+        assert isinstance(parent.child, Child)
         assert parent.child.label == "c_assign"
 
     def test_append_null_relationship(self, engine: Engine[Any]):

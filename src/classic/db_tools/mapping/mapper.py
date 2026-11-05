@@ -94,7 +94,7 @@ def plan_factory_call(
     if isinstance(factory, type) and issubclass(factory, dict):
         return FactoryCallPlan((), fields)
     try:
-        signature = inspect.signature(factory)
+        signature = inspect.signature(cast("Any", factory))
     except (TypeError, ValueError):
         return FactoryCallPlan((), fields)
 

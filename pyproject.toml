@@ -94,7 +94,14 @@ exclude = [
     # the cx_Oracle package cannot be installed on Python 3.11+
     "src/classic/db_tools/backends/cx_oracle.py",
     "tests/backends/test_cx_oracle.py",
+    # драйверы не ставятся в dev-окружение: без модулей протокол DBModule
+    # для них не проверить (проверяются в CI с соответствующим extra)
+    "src/classic/db_tools/backends/oracledb.py",
+    "src/classic/db_tools/backends/pymssql.py",
 ]
+# Всегда использовать окружение проекта, а не активное VIRTUAL_ENV
+venvPath = "."
+venv = ".venv"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = "none"
 
@@ -102,6 +109,15 @@ reportMissingTypeStubs = "none"
 root = "tests"
 reportPrivateUsage = "none"
 extraPaths = ["."]
+# Тесты опираются на нетипизированные драйверные объекты и моки;
+# аннотации параметров в тестах опциональны (как и в ruff-конфиге)
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportUnknownParameterType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportMissingParameterType = "none"
+reportMissingImports = "none"
 
 [tool.ruff]
 extend-exclude = ["mutants"]

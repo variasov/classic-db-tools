@@ -72,7 +72,7 @@ class ConnectionPool:
         connection_factory: Callable[[], ConnType],
         timeout: float = 5.0,
         limit: int = 0,
-        validator: ConnectionValidator | str = "auto",
+        validator: ConnectionValidator | str | None = "auto",
         autocommit_setter: Callable[[ConnType], None] | None = None,
     ) -> None:
         self._pool = self.queue_class()

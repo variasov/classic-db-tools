@@ -26,7 +26,7 @@ class TestUnknownDriver:
             Engine(_fake_driver())  # type: ignore[arg-type]
 
     def test_pool_disables_validation_for_unknown_driver(self):
-        pool = ConnectionPool(_fake_driver(), object)
+        pool = ConnectionPool(_fake_driver(), object)  # type: ignore[arg-type]
         assert pool.validate is None
         assert pool.before_release is None
 

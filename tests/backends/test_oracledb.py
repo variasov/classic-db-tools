@@ -93,6 +93,7 @@ class TestOracleDBConnectionPool:
             cursor = conn.cursor()
             cursor.execute('INSERT INTO "_pool_dirty_test" (id) VALUES (1)')
             cursor.close()
+            assert pool.before_release is not None
             reuse = pool.before_release(conn)
             assert reuse is True
         finally:

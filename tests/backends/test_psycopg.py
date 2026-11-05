@@ -192,6 +192,7 @@ class TestPsycopgConnectionPool:
                 "CREATE TEMP TABLE IF NOT EXISTS _tmp_pool_test (id INT)",
             )
             conn.execute("INSERT INTO _tmp_pool_test (id) VALUES (1)")
+            assert pool.before_release is not None
             reuse = pool.before_release(conn)
             assert reuse is True
         finally:
@@ -201,6 +202,7 @@ class TestPsycopgConnectionPool:
         pool = ConnectionPool(psycopg, connect)
         conn = pool.acquire()
         conn.close()
+        assert pool.before_release is not None
         reuse = pool.before_release(conn)
         assert reuse is False
 

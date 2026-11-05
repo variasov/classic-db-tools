@@ -37,9 +37,25 @@ class FakeCursor:
     def __init__(self, columns, rows):
         self.description = tuple((c,) for c in columns)
         self._rows = list(rows)
+        self.rowcount = len(rows)
 
     def fetchall(self):
         return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchmany(self, size, /):
+        return self._rows[:size]
+
+    def execute(self, operation, parameters=None, /):
+        return self
+
+    def executemany(self, operation, seq_of_parameters, /):
+        return self
+
+    def close(self):
+        return None
 
 
 def _map(mapping, result, columns, rows):
