@@ -1,5 +1,6 @@
 """Тесты исправлений L9: неизвестный драйвер, Engine.close(),
 слияние dict и kwargs в _prepare, utf-8 статических шаблонов."""
+
 import sqlite3
 from types import ModuleType
 from typing import Any
@@ -43,19 +44,22 @@ class TestEngineClose:
 class TestPrepareMerge:
     def test_dict_and_kwargs_merged(self, engine: Engine[Any]):
         row = engine.query(
-            "SELECT :a AS x, :b AS y", static=True,
+            "SELECT :a AS x, :b AS y",
+            static=True,
         ).one({"a": 1}, b=2)
         assert row == (1, 2)
 
     def test_kwargs_override_dict(self, engine: Engine[Any]):
         row = engine.query(
-            "SELECT :a AS x", static=True,
+            "SELECT :a AS x",
+            static=True,
         ).one({"a": 1}, a=5)
         assert row == (5,)
 
     def test_tuple_params_still_work(self, engine: Engine[Any]):
         row = engine.query(
-            "SELECT ? AS x, ? AS y", static=True,
+            "SELECT ? AS x, ? AS y",
+            static=True,
         ).one((1, 2))
         assert row == (1, 2)
 
@@ -82,7 +86,8 @@ class TestPrepareMerge:
 class TestStaticTemplateEncoding:
     def test_utf8_template(self, tmp_path, standalone_engine: Engine[Any]):
         (tmp_path / "cyrillic.sql").write_text(
-            "SELECT 'кириллица'", encoding="utf-8",
+            "SELECT 'кириллица'",
+            encoding="utf-8",
         )
         engine = Engine(
             sqlite3,

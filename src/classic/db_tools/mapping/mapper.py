@@ -160,9 +160,7 @@ class Context:
     def accessor(param: Parameter) -> Accessor:
         # Только dict-подобные фабрики дают item-доступ; для функций
         # и прочих классов отношения применяются через атрибуты.
-        if isinstance(param.factory, type) and issubclass(
-            param.factory, dict
-        ):
+        if isinstance(param.factory, type) and issubclass(param.factory, dict):
             return "item"
         return "attr"
 

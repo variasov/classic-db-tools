@@ -152,6 +152,9 @@ ignore = [
 "src/classic/db_tools/conn_validator.py" = [
     "BLE001",   # connection validators: any error means a broken connection
 ]
+"src/classic/db_tools/pool.py" = [
+    "BLE001",   # close(): a broken connection must not stop closing the rest
+]
 "src/classic/db_tools/detached_cursor.py" = [
     "ARG002",   # arguments of cursor protocol stubs that always raise
 ]

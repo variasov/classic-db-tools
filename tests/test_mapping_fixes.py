@@ -1,5 +1,6 @@
 """Тесты исправлений маппера (L6): отношения, аннотации, префиксы,
 дедупликация корня, колонки без префикса."""
+
 import sqlite3
 from dataclasses import dataclass, field
 from typing import Any

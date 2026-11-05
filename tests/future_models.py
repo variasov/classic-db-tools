@@ -1,4 +1,5 @@
 """Модель с отложенными аннотациями (PEP 563) для тестов авто-отношений."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

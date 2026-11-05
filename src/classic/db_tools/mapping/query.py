@@ -102,10 +102,7 @@ class MapperQuery(Generic[Result]):
         # выдан несколько раз одним и тем же инстансом; дедуплицируем
         # по identity, сохраняя порядок первого появления.
         return list(
-            {
-                id(obj): obj
-                for obj in mapper(iter(cursor.fetchall()))
-            }.values()
+            {id(obj): obj for obj in mapper(iter(cursor.fetchall()))}.values()
         )
 
     def iter(
