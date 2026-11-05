@@ -4,34 +4,32 @@ import pytest
 
 from classic.db_tools import Engine
 
-pytestmark = pytest.mark.usefixtures('data')
+pytestmark = pytest.mark.usefixtures("data")
 
 
 class TestTransaction:
-
     def test_commits_on_success(self, engine):
-        engine.query_from('insert_item.sql').execute(t='tc_commit', v=1)
-        row = engine.query_from('select_item_by_title.sql').one(t='tc_commit')
+        engine.query_from("insert_item.sql").execute(t="tc_commit", v=1)
+        row = engine.query_from("select_item_by_title.sql").one(t="tc_commit")
         assert row is not None
 
     def test_rollback_on_exception(self, engine):
         try:
             with engine.transaction():
-                engine.query_from('insert_item.sql').execute(
-                    t='tc_rollback', v=1,
+                engine.query_from("insert_item.sql").execute(
+                    t="tc_rollback",
+                    v=1,
                 )
-                raise RuntimeError('boom')
+                raise RuntimeError("boom")
         except RuntimeError:
             pass
-        row = engine.query_from(
-            'select_item_by_title.sql').one(t='tc_rollback')
+        row = engine.query_from("select_item_by_title.sql").one(t="tc_rollback")
         assert row is None
 
     def test_commit_false_rolls_back(self, engine):
         with engine.transaction(commit=False):
-            engine.query_from('insert_item.sql').execute(t='tc_nocommit', v=1)
-        row = engine.query_from(
-            'select_item_by_title.sql').one(t='tc_nocommit')
+            engine.query_from("insert_item.sql").execute(t="tc_nocommit", v=1)
+        row = engine.query_from("select_item_by_title.sql").one(t="tc_nocommit")
         assert row is None
 
     def test_as_decorator(self, engine):
@@ -41,7 +39,7 @@ class TestTransaction:
         def work():
             nonlocal call_count
             call_count += 1
-            engine.query('SELECT 1', static=True).execute()
+            engine.query("SELECT 1", static=True).execute()
 
         work()
         assert call_count == 1
@@ -56,81 +54,92 @@ class TestTransaction:
 
 
 class TestNestedTransaction:
-
     def test_nested_commit_all(self, engine):
         with engine.transaction():
-            engine.query_from('insert_item.sql').execute(
-                t='nest_outer', v=1,
+            engine.query_from("insert_item.sql").execute(
+                t="nest_outer",
+                v=1,
             )
             with engine.transaction():
-                engine.query_from('insert_item.sql').execute(
-                    t='nest_inner', v=2,
+                engine.query_from("insert_item.sql").execute(
+                    t="nest_inner",
+                    v=2,
                 )
-        row_out = engine.query_from(
-            'select_item_by_title.sql').one(t='nest_outer')
-        row_in = engine.query_from(
-            'select_item_by_title.sql').one(t='nest_inner')
+        row_out = engine.query_from("select_item_by_title.sql").one(
+            t="nest_outer"
+        )
+        row_in = engine.query_from("select_item_by_title.sql").one(
+            t="nest_inner"
+        )
         assert row_out is not None
         assert row_in is not None
 
     def test_inner_rollback_does_not_affect_outer(self, engine):
         with engine.transaction():
-            engine.query_from('insert_item.sql').execute(t='ni_outer', v=1)
+            engine.query_from("insert_item.sql").execute(t="ni_outer", v=1)
             try:
                 with engine.transaction():
-                    engine.query_from('insert_item.sql').execute(
-                        t='ni_inner', v=2,
+                    engine.query_from("insert_item.sql").execute(
+                        t="ni_inner",
+                        v=2,
                     )
-                    raise RuntimeError('inner fail')
+                    raise RuntimeError("inner fail")
             except RuntimeError:
                 pass
-            row_out = engine.query_from(
-                'select_item_by_title.sql').one(t='ni_outer')
+            row_out = engine.query_from("select_item_by_title.sql").one(
+                t="ni_outer"
+            )
             assert row_out is not None
-        row_in = engine.query_from(
-            'select_item_by_title.sql').one(t='ni_inner')
+        row_in = engine.query_from("select_item_by_title.sql").one(t="ni_inner")
         assert row_in is None
 
     def test_outer_rollback_rolls_back_inner_too(self, engine):
         try:
             with engine.transaction():
-                engine.query_from('insert_item.sql').execute(
-                    t='no_outer', v=1,
+                engine.query_from("insert_item.sql").execute(
+                    t="no_outer",
+                    v=1,
                 )
                 with engine.transaction():
-                    engine.query_from('insert_item.sql').execute(
-                        t='no_inner', v=2,
+                    engine.query_from("insert_item.sql").execute(
+                        t="no_inner",
+                        v=2,
                     )
-                raise RuntimeError('outer fail')
+                raise RuntimeError("outer fail")
         except RuntimeError:
             pass
-        row_out = engine.query_from(
-            'select_item_by_title.sql').one(t='no_outer')
-        row_in = engine.query_from(
-            'select_item_by_title.sql').one(t='no_inner')
+        row_out = engine.query_from("select_item_by_title.sql").one(
+            t="no_outer"
+        )
+        row_in = engine.query_from("select_item_by_title.sql").one(t="no_inner")
         assert row_out is None
         assert row_in is None
 
     def test_work_after_inner_rollback(self, engine):
         with engine.transaction():
-            engine.query_from('insert_item.sql').execute(t='nw_outer', v=1)
+            engine.query_from("insert_item.sql").execute(t="nw_outer", v=1)
             try:
                 with engine.transaction():
-                    engine.query_from('insert_item.sql').execute(
-                        t='nw_inner', v=2,
+                    engine.query_from("insert_item.sql").execute(
+                        t="nw_inner",
+                        v=2,
                     )
-                    raise RuntimeError('inner fail')
+                    raise RuntimeError("inner fail")
             except RuntimeError:
                 pass
-            engine.query_from('insert_item.sql').execute(
-                t='nw_after', v=3,
+            engine.query_from("insert_item.sql").execute(
+                t="nw_after",
+                v=3,
             )
-        row_outer = engine.query_from(
-            'select_item_by_title.sql').one(t='nw_outer')
-        row_after = engine.query_from(
-            'select_item_by_title.sql').one(t='nw_after')
-        row_inner = engine.query_from(
-            'select_item_by_title.sql').one(t='nw_inner')
+        row_outer = engine.query_from("select_item_by_title.sql").one(
+            t="nw_outer"
+        )
+        row_after = engine.query_from("select_item_by_title.sql").one(
+            t="nw_after"
+        )
+        row_inner = engine.query_from("select_item_by_title.sql").one(
+            t="nw_inner"
+        )
         assert row_outer is not None
         assert row_after is not None
         assert row_inner is None
@@ -139,41 +148,48 @@ class TestNestedTransaction:
 
         @engine.transaction
         def outer():
-            engine.query_from('insert_item.sql').execute(t='nd_outer', v=1)
+            engine.query_from("insert_item.sql").execute(t="nd_outer", v=1)
 
             @engine.transaction
             def inner():
-                engine.query_from('insert_item.sql').execute(
-                    t='nd_inner', v=2,
+                engine.query_from("insert_item.sql").execute(
+                    t="nd_inner",
+                    v=2,
                 )
 
             inner()
 
         outer()
-        assert engine.query_from(
-            'select_item_by_title.sql').one(t='nd_outer') is not None
-        assert engine.query_from(
-            'select_item_by_title.sql').one(t='nd_inner') is not None
+        assert (
+            engine.query_from("select_item_by_title.sql").one(t="nd_outer")
+            is not None
+        )
+        assert (
+            engine.query_from("select_item_by_title.sql").one(t="nd_inner")
+            is not None
+        )
 
     def test_nested_decorator_rollback(self, engine):
 
         @engine.transaction
         def outer():
-            engine.query_from('insert_item.sql').execute(
-                t='ndr_outer', v=1,
+            engine.query_from("insert_item.sql").execute(
+                t="ndr_outer",
+                v=1,
             )
-            raise RuntimeError('outer fail')
+            raise RuntimeError("outer fail")
 
         pytest.raises(RuntimeError, outer)
-        assert engine.query_from(
-            'select_item_by_title.sql').one(t='ndr_outer') is None
+        assert (
+            engine.query_from("select_item_by_title.sql").one(t="ndr_outer")
+            is None
+        )
 
 
 class TestConn:
-
     def test_context_manager(self, engine):
         with engine.conn():
-            result = engine.query('SELECT 2 AS b', static=True).scalar()
+            result = engine.query("SELECT 2 AS b", static=True).scalar()
         assert result == 2
 
     def test_as_decorator(self, engine):
@@ -183,16 +199,17 @@ class TestConn:
         def work():
             nonlocal call_count
             call_count += 1
-            engine.query('SELECT 3', static=True).execute()
+            engine.query("SELECT 3", static=True).execute()
 
         work()
         assert call_count == 1
 
     def test_multiple_queries_in_conn(self, engine):
         with engine.conn():
-            engine.query_from('insert_item.sql').execute(t='cm_multi', v=1)
-            row = engine.query_from(
-                'select_item_by_title.sql').one(t='cm_multi')
+            engine.query_from("insert_item.sql").execute(t="cm_multi", v=1)
+            row = engine.query_from("select_item_by_title.sql").one(
+                t="cm_multi"
+            )
             assert row is not None
 
     def test_decorator_preserves_return_value(self, engine):
@@ -205,26 +222,25 @@ class TestConn:
 
 
 class TestCommitFailure:
-
     @pytest.fixture
     def fk_engine(self, tmp_path):
-        path = str(tmp_path / 'fk.db')
+        path = str(tmp_path / "fk.db")
 
         def connect():
             conn = sqlite3.connect(path)
-            conn.execute('PRAGMA foreign_keys = ON')
+            conn.execute("PRAGMA foreign_keys = ON")
             return conn
 
         eng = Engine(sqlite3, connect)
         with eng.transaction():
             eng.query(
-                'CREATE TABLE parent (id INTEGER PRIMARY KEY)',
+                "CREATE TABLE parent (id INTEGER PRIMARY KEY)",
                 static=True,
             ).execute()
             eng.query(
-                'CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id '
-                'INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY '
-                'DEFERRED)',
+                "CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id "
+                "INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY "
+                "DEFERRED)",
                 static=True,
             ).execute()
         return eng
@@ -232,14 +248,15 @@ class TestCommitFailure:
     @staticmethod
     def _insert_child(eng, id_, parent_id):
         eng.query(
-            'INSERT INTO child (id, parent_id) VALUES (:i, :p)',
+            "INSERT INTO child (id, parent_id) VALUES (:i, :p)",
             static=True,
         ).execute(i=id_, p=parent_id)
 
     @staticmethod
     def _count(eng):
         return eng.query(
-            'SELECT count(*) FROM child', static=True,
+            "SELECT count(*) FROM child",
+            static=True,
         ).scalar()
 
     def test_commit_error_propagates(self, fk_engine):
@@ -256,7 +273,8 @@ class TestCommitFailure:
 
         with fk_engine.transaction():
             fk_engine.query(
-                'INSERT INTO parent (id) VALUES (1)', static=True,
+                "INSERT INTO parent (id) VALUES (1)",
+                static=True,
             ).execute()
             self._insert_child(fk_engine, 1, 1)
 
@@ -270,7 +288,8 @@ class TestCommitFailure:
 
             with fk_engine.transaction():
                 fk_engine.query(
-                    'INSERT INTO parent (id) VALUES (1)', static=True,
+                    "INSERT INTO parent (id) VALUES (1)",
+                    static=True,
                 ).execute()
                 self._insert_child(fk_engine, 2, 1)
 

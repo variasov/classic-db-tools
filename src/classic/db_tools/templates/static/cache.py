@@ -47,8 +47,8 @@ class StaticTemplatesCache:
                             break
                     if obj is None:
                         raise FileNotFoundError(
-                            f'File {filename} does not exist in '
-                            f'{self.templates_paths} dirs'
+                            f"File {filename} does not exist in "
+                            f"{self.templates_paths} dirs"
                         )
                 elif content:
                     obj = StaticTemplate(self.logger, content=content)

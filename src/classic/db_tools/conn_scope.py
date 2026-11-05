@@ -48,10 +48,10 @@ class ConnectionScope:
         return cast(Connection, self._current.conn)
 
     def __exit__(
-            self,
-            type_: Optional[Type[BaseException]],
-            value: Optional[BaseException],
-            traceback: Optional[TracebackType],
+        self,
+        type_: Optional[Type[BaseException]],
+        value: Optional[BaseException],
+        traceback: Optional[TracebackType],
     ) -> Optional[bool]:
         if self._first is True:
             try:

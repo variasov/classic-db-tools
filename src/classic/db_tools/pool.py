@@ -70,7 +70,7 @@ class ConnectionPool:
         connection_factory,
         timeout: float = 5.0,
         limit: int = 0,
-        validator: Union[ConnectionValidator, str] = 'auto',
+        validator: Union[ConnectionValidator, str] = "auto",
         autocommit_setter: Optional[Callable] = None,
     ):
         self._pool = self.queue_class()
@@ -129,7 +129,7 @@ class ConnectionPool:
             else:
                 return self._connect()
 
-    def connect(self) -> 'ContextManagerWrappedConnection':
+    def connect(self) -> "ContextManagerWrappedConnection":
         """
         Return a context manager that manages acquiring and releasing a
         connection.

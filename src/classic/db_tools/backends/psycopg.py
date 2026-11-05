@@ -18,7 +18,6 @@ class PsycopgTxParams(TypedDict):
 
 
 class PsycopgTransaction(Transaction, driver=psycopg):
-
     @classmethod
     def enable_autocommit(cls, conn):
         conn.autocommit = True
@@ -32,17 +31,17 @@ class PsycopgTransaction(Transaction, driver=psycopg):
         conn.autocommit = False
 
         params = cast(PsycopgTxParams, self._params)
-        if readonly := params.get('readonly'):
+        if readonly := params.get("readonly"):
             self.old_read_only = conn.read_only
             conn.read_only = readonly
 
-        if level := params.get('level'):
+        if level := params.get("level"):
             self.old_isolation_level = conn.isolation_level
             if isinstance(level, str):
                 level = psycopg.IsolationLevel[level.upper()]
             conn.isolation_level = level
 
-        if deferrable := params.get('deferrable'):
+        if deferrable := params.get("deferrable"):
             self.old_deferrable = conn.deferrable
             conn.deferrable = deferrable
 
@@ -51,29 +50,29 @@ class PsycopgTransaction(Transaction, driver=psycopg):
 
         conn.autocommit = True
 
-        old_read_only = getattr(self, 'old_read_only', None)
+        old_read_only = getattr(self, "old_read_only", None)
         if old_read_only is not None:
             conn.read_only = old_read_only
 
-        old_isolation_level = getattr(self, 'old_isolation_level', None)
+        old_isolation_level = getattr(self, "old_isolation_level", None)
         if old_isolation_level is not None:
             conn.isolation_level = old_isolation_level
 
-        old_deferrable = getattr(self, 'old_deferrable', None)
+        old_deferrable = getattr(self, "old_deferrable", None)
         if old_deferrable is not None:
             conn.deferrable = old_deferrable
 
     def _start_savepoint(self):
-        self._savepoint_name = f'savepoint_{id(self)}'
+        self._savepoint_name = f"savepoint_{id(self)}"
         conn = cast(psycopg.Connection, self._current.conn)
         conn.execute(
-            SQL('SAVEPOINT {}').format(Identifier(self._savepoint_name)),
+            SQL("SAVEPOINT {}").format(Identifier(self._savepoint_name)),
         )
 
     def _release_savepoint(self):
         conn = cast(psycopg.Connection, self._current.conn)
         conn.execute(
-            SQL('RELEASE SAVEPOINT {}').format(
+            SQL("RELEASE SAVEPOINT {}").format(
                 Identifier(self._savepoint_name),
             ),
         )
@@ -81,21 +80,20 @@ class PsycopgTransaction(Transaction, driver=psycopg):
     def _rollback_savepoint(self):
         conn = cast(psycopg.Connection, self._current.conn)
         conn.execute(
-            SQL('ROLLBACK TO {}').format(Identifier(self._savepoint_name)),
+            SQL("ROLLBACK TO {}").format(Identifier(self._savepoint_name)),
         )
         conn.execute(
-            SQL('RELEASE SAVEPOINT {}').format(
+            SQL("RELEASE SAVEPOINT {}").format(
                 Identifier(self._savepoint_name),
             ),
         )
 
 
 class PsycopgConnectionValidator(ConnectionValidator, driver=psycopg):
-
     def validate(self, conn):
         try:
             cur = conn.cursor()
-            cur.execute('SELECT 1')
+            cur.execute("SELECT 1")
             cur.fetchone()
             cur.close()
         except Exception:

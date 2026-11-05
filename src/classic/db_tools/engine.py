@@ -2,8 +2,17 @@ from functools import wraps
 import logging
 from os import PathLike
 from typing import (
-    Dict, TypeVar, Any, ParamSpec, Union, Sequence,
-    Callable, Optional, Type, cast, overload,
+    Dict,
+    TypeVar,
+    Any,
+    ParamSpec,
+    Union,
+    Sequence,
+    Callable,
+    Optional,
+    Type,
+    cast,
+    overload,
 )
 from pathlib import Path
 
@@ -18,8 +27,8 @@ from .query import Query
 from .templates import StaticTemplatesCache, DynamicTemplatesCache
 from .dbapi import DBModule
 
-Params = ParamSpec('Params')
-Result = TypeVar('Result')
+Params = ParamSpec("Params")
+Result = TypeVar("Result")
 
 
 class Engine:
@@ -65,9 +74,13 @@ class Engine:
         driver: DBModule,
         factory: Optional[Callable[[], Any]] = None,
         /,
-        templates_dirs: Optional[Union[
-            str, PathLike, Sequence[Union[str, PathLike]],
-        ]] = None,
+        templates_dirs: Optional[
+            Union[
+                str,
+                PathLike,
+                Sequence[Union[str, PathLike]],
+            ]
+        ] = None,
         str_templates_static_by_default: bool = False,
         identifier_quote_char: Optional[str] = None,
         default_mapping: Optional[dict[str, Parameter]] = None,
@@ -106,7 +119,7 @@ class Engine:
 
         self.current = Scope()
 
-        assert hasattr(driver, 'connect')
+        assert hasattr(driver, "connect")
         self.driver = driver
 
         if factory is None:
@@ -118,12 +131,13 @@ class Engine:
         self._pool_cls = pool_class
         self._tx_cls = Transaction.implementations[self.driver]
         self._pool = pool_class(
-            driver, self._factory,
+            driver,
+            self._factory,
             autocommit_setter=self._tx_cls.enable_autocommit,
             **(pool_kwargs or {}),
         )
 
-        self._logger = logger or logging.getLogger('classic-db-tools')
+        self._logger = logger or logging.getLogger("classic-db-tools")
 
         self._str_templates_static_by_default = str_templates_static_by_default
 
@@ -139,8 +153,8 @@ class Engine:
             self.templates_paths = templates_dirs
         else:
             raise ValueError(
-                'templates_paths not an str, '
-                'PathLike or Sequence[Str | PathLike], but %s',
+                "templates_paths not an str, "
+                "PathLike or Sequence[Str | PathLike], but %s",
                 templates_dirs,
             )
 
@@ -171,12 +185,12 @@ class Engine:
         Нужен для работы с файловыми шаблонами SQL.
         """
 
-        if filename.endswith('.sql'):
+        if filename.endswith(".sql"):
             tmpl = self.static_templates.get_or_create
-        elif filename.endswith('.sql.tmpl'):
+        elif filename.endswith(".sql.tmpl"):
             tmpl = self.dynamic_templates.get_or_create
         else:
-            raise ValueError(f'Unsupported filename extension: {filename}')
+            raise ValueError(f"Unsupported filename extension: {filename}")
         return Query(
             cast(Callable[[], ConnectionScope], self.conn),
             self._mapper,
@@ -214,8 +228,7 @@ class Engine:
         /,
         commit: bool = True,
         **tx_kwargs: Any,
-    ) -> Callable[Params, Result]:
-        ...
+    ) -> Callable[Params, Result]: ...
 
     @overload
     def transaction(
@@ -224,8 +237,7 @@ class Engine:
         /,
         commit: bool = True,
         **tx_kwargs: Any,
-    ) -> Transaction:
-        ...
+    ) -> Transaction: ...
 
     def transaction(
         self,
@@ -254,6 +266,7 @@ class Engine:
         if fn is None:
             return self._tx_cls(self._pool, self.current, commit, tx_kwargs)
         else:
+
             @wraps(fn)
             def wrapper(*args: Params.args, **kwargs: Params.kwargs) -> Result:
                 with self.transaction(commit=commit, **tx_kwargs):
@@ -262,12 +275,12 @@ class Engine:
             return wrapper
 
     @overload
-    def conn(self, fn: Callable[Params, Result], /) -> Callable[Params, Result]:
-        ...
+    def conn(
+        self, fn: Callable[Params, Result], /
+    ) -> Callable[Params, Result]: ...
 
     @overload
-    def conn(self, fn: None = None, /) -> ConnectionScope:
-        ...
+    def conn(self, fn: None = None, /) -> ConnectionScope: ...
 
     def conn(
         self,

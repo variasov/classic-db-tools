@@ -1,7 +1,16 @@
 from functools import partial
 from typing import (
-    Any, Generator, Generic, Dict, Iterator, TypeVar, Type,
-    Callable, Sequence, Union, cast,
+    Any,
+    Generator,
+    Generic,
+    Dict,
+    Iterator,
+    TypeVar,
+    Type,
+    Callable,
+    Sequence,
+    Union,
+    cast,
 )
 
 from ..conn_scope import ConnectionScope
@@ -15,7 +24,7 @@ from .types import MapperFunc
 
 
 QueryParams = Union[Dict[str, Any], Any]
-Result = TypeVar('Result', bound=Type[object])
+Result = TypeVar("Result", bound=Type[object])
 
 
 class MapperQuery(Generic[Result]):
@@ -64,7 +73,7 @@ class MapperQuery(Generic[Result]):
 
     def _sources(self, cursor: Cursor, params: Dict[str, Any]) -> str:
         mapper = self._execute(cursor, params)
-        return getattr(mapper, 'sources', lambda: '')()
+        return getattr(mapper, "sources", lambda: "")()
 
     def all(
         self,
@@ -164,7 +173,6 @@ class MapperQuery(Generic[Result]):
         и необходимо получить лишь один корневой объект.
         """
 
-
         prepared = self._prepare(params, kwargs)
 
         if cursor is not None:
@@ -208,7 +216,9 @@ class MapperQuery(Generic[Result]):
     ) -> MapperFunc:
         self._tmpl_factory().execute(cursor, params)
         return self._mapper.func_for_cursor(
-            cursor, self._mapping, self._result,
+            cursor,
+            self._mapping,
+            self._result,
         )
 
     @staticmethod
@@ -216,7 +226,9 @@ class MapperQuery(Generic[Result]):
         cursor: Cursor,
         batch: int | None,
     ) -> Generator[
-        Row, None, None,
+        Row,
+        None,
+        None,
     ]:
         if batch:
             fetch = partial(cursor.fetchmany, batch)

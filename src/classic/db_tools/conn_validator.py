@@ -4,7 +4,7 @@ from .dbapi import DBModule
 
 
 class ConnectionValidator:
-    validators: ClassVar[Dict[DBModule, Type['ConnectionValidator']]] = {}
+    validators: ClassVar[Dict[DBModule, Type["ConnectionValidator"]]] = {}
 
     def __init_subclass__(cls, driver: DBModule, **kwargs):
         cls.validators[driver] = cls

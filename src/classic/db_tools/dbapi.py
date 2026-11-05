@@ -1,6 +1,11 @@
 from typing import (
-    Any, Protocol, Sequence, Optional,
-    Tuple, Dict, Union,
+    Any,
+    Protocol,
+    Sequence,
+    Optional,
+    Tuple,
+    Dict,
+    Union,
 )
 
 
@@ -14,50 +19,39 @@ class Cursor(Protocol):
     description: CursorDescription
 
     def execute(
-            self,
-            operation: str,
-            parameters: CursorParams = None,
-    ) -> None:
-        ...
+        self,
+        operation: str,
+        parameters: CursorParams = None,
+    ) -> None: ...
 
     def executemany(
-            self,
-            operation: str,
-            seq_of_parameters: Sequence[CursorParams],
-    ) -> None:
-        ...
+        self,
+        operation: str,
+        seq_of_parameters: Sequence[CursorParams],
+    ) -> None: ...
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
-    def fetchone(self) -> Row:
-        ...
+    def fetchone(self) -> Row: ...
 
-    def fetchmany(self, size: Optional[int]) -> Sequence[Row]:
-        ...
+    def fetchmany(self, size: Optional[int]) -> Sequence[Row]: ...
 
-    def fetchall(self) -> Sequence[Row]:
-        ...
+    def fetchall(self) -> Sequence[Row]: ...
 
 
 class Connection(Protocol):
     autocommit: bool
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
-    def commit(self) -> None:
-        ...
+    def commit(self) -> None: ...
 
-    def rollback(self) -> None:
-        ...
+    def rollback(self) -> None: ...
 
-    def cursor(self) -> Cursor:
-        ...
+    def cursor(self) -> Cursor: ...
 
 
 class DBModule(Protocol):
     paramstyle: str
 
-    def connect(self, *args: Any, **kwargs: Any) -> Any:
-        ...
+    def connect(self, *args: Any, **kwargs: Any) -> Any: ...

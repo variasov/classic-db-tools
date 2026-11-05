@@ -23,7 +23,7 @@ class DynamicTemplatesCache:
     Используется под капотом Engine, снаружи не доступен.
     """
 
-    VALID_ID_QUOTE_CHARS = ('"', '`', "'")
+    VALID_ID_QUOTE_CHARS = ('"', "`", "'")
 
     def __init__(
         self,
@@ -44,11 +44,11 @@ class DynamicTemplatesCache:
         )
         self.renderer = Renderer()
         self.jinja.add_extension(AutoBind)
-        self.jinja.filters['bind'] = self.renderer.bind
-        self.jinja.filters['autobind'] = self.renderer.autobind
-        self.jinja.filters['sqlsafe'] = self.renderer.sql_safe
-        self.jinja.filters['inclause'] = self.renderer.bind_in_clause
-        self.jinja.filters['identifier'] = (
+        self.jinja.filters["bind"] = self.renderer.bind
+        self.jinja.filters["autobind"] = self.renderer.autobind
+        self.jinja.filters["sqlsafe"] = self.renderer.sql_safe
+        self.jinja.filters["inclause"] = self.renderer.bind_in_clause
+        self.jinja.filters["identifier"] = (
             self.renderer.build_escape_identifier_filter(
                 self.identifier_quote_char,
             )
@@ -83,8 +83,10 @@ class DynamicTemplatesCache:
                     raise NotImplementedError
 
                 obj = DynamicTemplate(
-                    self.logger, self.renderer,
-                    template, self.paramstyle,
+                    self.logger,
+                    self.renderer,
+                    template,
+                    self.paramstyle,
                 )
                 self.cache[key] = obj
 

@@ -1,6 +1,14 @@
 from typing import (
-    Any, Iterable, Iterator, List, Sequence, Union, Dict,
-    Callable, Optional, cast,
+    Any,
+    Iterable,
+    Iterator,
+    List,
+    Sequence,
+    Union,
+    Dict,
+    Callable,
+    Optional,
+    cast,
 )
 
 from .mapping import Mapper, Result, Parameter, MapperQuery
@@ -134,7 +142,7 @@ class Query:
             [
                 param if isinstance(param, (dict, tuple)) else param.__dict__
                 for param in params
-            ]
+            ],
         )
 
         if cursor is not None:
@@ -302,7 +310,7 @@ class Query:
         if row is None:
             if not raising:
                 return None
-            raise IndexError('scalar query returned no rows')
+            raise IndexError("scalar query returned no rows")
         return row[0]
 
     def scalars(
@@ -391,9 +399,14 @@ class Query:
             return self._tmpl_factory().execute(cursor, prepared).rowcount
 
         with self._conn_scope() as conn:
-            return self._tmpl_factory().execute(
-                conn.cursor(), prepared,
-            ).rowcount
+            return (
+                self._tmpl_factory()
+                .execute(
+                    conn.cursor(),
+                    prepared,
+                )
+                .rowcount
+            )
 
     @staticmethod
     def _prepare(params: QueryParams, kwargs: Dict[str, Any]) -> Dict[str, Any]:

@@ -5,9 +5,9 @@ from .dynamic import DynamicTemplate
 from .dynamic import DynamicTemplatesCache
 
 __all__ = (
-    'Template',
-    'StaticTemplate',
-    'StaticTemplatesCache',
-    'DynamicTemplate',
-    'DynamicTemplatesCache',
+    "Template",
+    "StaticTemplate",
+    "StaticTemplatesCache",
+    "DynamicTemplate",
+    "DynamicTemplatesCache",
 )

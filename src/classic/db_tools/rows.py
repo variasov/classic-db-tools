@@ -5,7 +5,7 @@ from .conn_scope import ConnectionScope
 from .dbapi import Cursor
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class Rows(Generic[T], Iterator[T]):
@@ -47,7 +47,7 @@ class Rows(Generic[T], Iterator[T]):
         conn_scope: Callable[[], ConnectionScope],
         run: Callable[[Cursor], Iterator[T]],
         cursor: Optional[Cursor] = None,
-    ) -> 'Rows[T]':
+    ) -> "Rows[T]":
         """
         Выполняет запрос и возвращает Rows.
 
@@ -82,7 +82,7 @@ class Rows(Generic[T], Iterator[T]):
                     release()
             raise
 
-    def __iter__(self) -> 'Rows[T]':
+    def __iter__(self) -> "Rows[T]":
         return self
 
     def __next__(self) -> T:
@@ -94,7 +94,7 @@ class Rows(Generic[T], Iterator[T]):
             self.close()
             raise
 
-    def __enter__(self) -> 'Rows[T]':
+    def __enter__(self) -> "Rows[T]":
         return self
 
     def __exit__(
@@ -117,7 +117,7 @@ class Rows(Generic[T], Iterator[T]):
         self._source = self._cursor = self._release = None
         try:
             try:
-                closer = getattr(source, 'close', None)
+                closer = getattr(source, "close", None)
                 if closer is not None:
                     closer()
             finally:

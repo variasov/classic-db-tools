@@ -3,7 +3,13 @@ from typing import Any
 from jinja2 import Environment
 
 from classic.criteria import (
-    And, CriteriaNode, Invert, Or, ReturnsFalse, ReturnsTrue, Xor,
+    And,
+    CriteriaNode,
+    Invert,
+    Or,
+    ReturnsFalse,
+    ReturnsTrue,
+    Xor,
 )
 
 
@@ -16,16 +22,16 @@ def traverse(criteria: CriteriaNode[Any], translators) -> str:
     """
     if isinstance(criteria, And):
         if not criteria.nested:
-            return '1=1'
-        return ' AND '.join(
-            '({})'.format(traverse(nested, translators))
+            return "1=1"
+        return " AND ".join(
+            "({})".format(traverse(nested, translators))
             for nested in criteria.nested
         )
     elif isinstance(criteria, Or):
         if not criteria.nested:
-            return '1=0'
-        return ' OR '.join(
-            '({})'.format(traverse(nested, translators))
+            return "1=0"
+        return " OR ".join(
+            "({})".format(traverse(nested, translators))
             for nested in criteria.nested
         )
     elif isinstance(criteria, Xor):
@@ -33,25 +39,26 @@ def traverse(criteria: CriteriaNode[Any], translators) -> str:
         # поэтому раскрываем: (A AND NOT B) OR (NOT A AND B).
         # Каждое вхождение рендерится заново: для позиционных
         # paramstyle у каждого плейсхолдера должно быть своё значение.
-        return '((({}) AND NOT ({})) OR (NOT ({}) AND ({})))'.format(
+        return "((({}) AND NOT ({})) OR (NOT ({}) AND ({})))".format(
             traverse(criteria.left, translators),
             traverse(criteria.right, translators),
             traverse(criteria.left, translators),
             traverse(criteria.right, translators),
         )
     elif isinstance(criteria, Invert):
-        return 'NOT ({})'.format(traverse(criteria.nested, translators))
+        return "NOT ({})".format(traverse(criteria.nested, translators))
     elif isinstance(criteria, ReturnsTrue):
-        return '1=1'
+        return "1=1"
     elif isinstance(criteria, ReturnsFalse):
-        return '1=0'
+        return "1=0"
     else:
         name = criteria.__class__.__name__
         macro = getattr(translators, name, None)
         if not callable(macro):
             raise LookupError(
                 'No macro "{}" for criteria {} in translators'.format(
-                    name, name,
+                    name,
+                    name,
                 )
             )
         return macro(criteria)
@@ -59,14 +66,12 @@ def traverse(criteria: CriteriaNode[Any], translators) -> str:
 
 def contains(criteria: CriteriaNode[Any], *translators) -> bool:
     if isinstance(criteria, (And, Or)):
-        return any((
-            contains(nested, *translators)
-            for nested in criteria.nested
-        ))
+        return any(
+            (contains(nested, *translators) for nested in criteria.nested)
+        )
     elif isinstance(criteria, Xor):
-        return (
-            contains(criteria.left, *translators) or
-            contains(criteria.right, *translators)
+        return contains(criteria.left, *translators) or contains(
+            criteria.right, *translators
         )
     elif isinstance(criteria, Invert):
         return contains(criteria.nested, *translators)
@@ -82,7 +87,9 @@ def contains(criteria: CriteriaNode[Any], *translators) -> bool:
 
 
 def register_criteria_macro(env: Environment):
-    env.globals.update({
-        'traverse': traverse,
-        'contains': contains,
-    })
+    env.globals.update(
+        {
+            "traverse": traverse,
+            "contains": contains,
+        }
+    )

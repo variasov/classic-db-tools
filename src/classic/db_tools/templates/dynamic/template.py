@@ -17,7 +17,6 @@ class DynamicTemplate(Template):
     Используется под капотом Query и MapperQuery, снаружи недоступен.
     """
 
-
     def __init__(
         self,
         logger: logging.Logger,
@@ -36,7 +35,9 @@ class DynamicTemplate(Template):
         params: Dict[str, Any],
     ) -> Cursor:
         sql, ordered_params = self.renderer.prepare_query(
-            self.template, params, self.param_style,
+            self.template,
+            params,
+            self.param_style,
         )
         self.logger.debug(sql)
         cursor.execute(sql, ordered_params)
@@ -49,7 +50,9 @@ class DynamicTemplate(Template):
     ) -> Cursor:
         for param in params:
             sql, ordered_params = self.renderer.prepare_query(
-                self.template, param, self.param_style,
+                self.template,
+                param,
+                self.param_style,
             )
             self.logger.debug(sql)
             cursor.execute(sql, ordered_params)

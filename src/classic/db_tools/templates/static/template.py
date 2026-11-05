@@ -23,7 +23,7 @@ class StaticTemplate(Template):
         assert filepath is None or content is None
         if filepath:
             self.filepath = filepath
-            with open(self.filepath, 'rt') as file:
+            with open(self.filepath, "rt") as file:
                 self.content = file.read()
         elif content:
             self.filepath = None

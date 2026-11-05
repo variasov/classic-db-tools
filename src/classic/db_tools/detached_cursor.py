@@ -11,10 +11,10 @@ class CursorOutsideScopeError(RuntimeError):
 
 
 _MESSAGE = (
-    'Result of execute() outside of engine.conn()/engine.transaction() '
-    'is not available: the connection has already been returned '
-    'to the pool. Call execute() inside a scope '
-    'or use one()/all()/scalar().'
+    "Result of execute() outside of engine.conn()/engine.transaction() "
+    "is not available: the connection has already been returned "
+    "to the pool. Call execute() inside a scope "
+    "or use one()/all()/scalar()."
 )
 
 
@@ -72,6 +72,6 @@ class DetachedCursor:
         _fail()
 
     def __getattr__(self, name: str) -> Any:
-        if name.startswith('__') and name.endswith('__'):
+        if name.startswith("__") and name.endswith("__"):
             raise AttributeError(name)
         _fail()

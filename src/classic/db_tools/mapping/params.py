@@ -1,8 +1,17 @@
 from dataclasses import dataclass
 import inspect
 from typing import (
-    Any, Callable, Tuple, Dict, TypeAlias,
-    Union, get_args, get_origin, List, Set, Type,
+    Any,
+    Callable,
+    Tuple,
+    Dict,
+    TypeAlias,
+    Union,
+    get_args,
+    get_origin,
+    List,
+    Set,
+    Type,
 )
 
 from frozendict import frozendict
@@ -18,7 +27,7 @@ class Relationship:
     def __init__(self, target: Any):
         if not isinstance(target, str):
             target = target.__class__.__name__
-        object.__setattr__(self, 'target', target.lower())
+        object.__setattr__(self, "target", target.lower())
 
 
 @dataclass(frozen=True, init=False)
@@ -51,7 +60,7 @@ class Parameter:
         try:
             signature = inspect.signature(self.factory)
         except ValueError:
-            object.__setattr__(self, 'relationships', frozendict(rels))
+            object.__setattr__(self, "relationships", frozendict(rels))
             return
 
         new_rels = {}
@@ -75,7 +84,7 @@ class Parameter:
             except TypeError:
                 continue
 
-        object.__setattr__(self, 'relationships', frozendict(new_rels))
+        object.__setattr__(self, "relationships", frozendict(new_rels))
 
 
 @dataclass(frozen=True, init=False)
@@ -102,15 +111,15 @@ class Entity(Parameter):
         **relationships: Relationship,
     ) -> None:
         # Set cls
-        object.__setattr__(self, 'factory', factory)
+        object.__setattr__(self, "factory", factory)
 
         # Set ID
         if isinstance(id_, str):
-            id_ = (id_.lower(), )
+            id_ = (id_.lower(),)
         elif isinstance(id_, tuple):
             id_ = tuple((_.lower() for _ in id_))
 
-        object.__setattr__(self, 'id', id_)
+        object.__setattr__(self, "id", id_)
 
         # Set relationships
         self._parse_relationships(relationships)
@@ -141,10 +150,10 @@ class Value(Parameter):
         **relationships: Relationship,
     ) -> None:
         # Set cls
-        object.__setattr__(self, 'factory', factory)
+        object.__setattr__(self, "factory", factory)
 
         # Set ID
-        object.__setattr__(self, 'reduce_none', reduce_none)
+        object.__setattr__(self, "reduce_none", reduce_none)
 
         # Set relationships
         self._parse_relationships(relationships)
@@ -154,7 +163,4 @@ Mapping: TypeAlias = frozendict[str, Parameter]
 
 
 def create_mapping(**params: Parameter) -> Mapping:
-    return frozendict((
-        (key.lower(), value)
-        for key, value in params.items()
-    ))
+    return frozendict(((key.lower(), value) for key, value in params.items()))

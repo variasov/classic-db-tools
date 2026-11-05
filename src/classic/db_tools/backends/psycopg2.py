@@ -18,12 +18,10 @@ class Psycopg2Connection(Connection, Protocol):
     isolation_level: str
     info: ConnInfo
 
-    def set_session(self, isolation_level: str) -> None:
-        ...
+    def set_session(self, isolation_level: str) -> None: ...
 
 
 class Psycopg2Transaction(Transaction, driver=psycopg2):
-
     @classmethod
     def enable_autocommit(cls, conn):
         conn.autocommit = True
@@ -33,22 +31,22 @@ class Psycopg2Transaction(Transaction, driver=psycopg2):
         if conn.info.transaction_status != TRANSACTION_STATUS_IDLE:
             conn.rollback()
         conn.autocommit = False
-        if level := self._params.get('level'):
+        if level := self._params.get("level"):
             self._old_isolation_level = conn.isolation_level
             conn.set_session(isolation_level=level.upper())
 
     def _restore_params(self):
         conn = cast(Psycopg2Connection, self._current.conn)
         conn.autocommit = True
-        if hasattr(self, '_old_isolation_level'):
+        if hasattr(self, "_old_isolation_level"):
             conn.set_session(isolation_level=self._old_isolation_level)
 
     def _start_savepoint(self):
-        self._savepoint_name = f'sp_{id(self)}'
+        self._savepoint_name = f"sp_{id(self)}"
         conn = cast(Psycopg2Connection, self._current.conn)
         cursor = conn.cursor()
         try:
-            cursor.execute(f'SAVEPOINT {self._savepoint_name}')
+            cursor.execute(f"SAVEPOINT {self._savepoint_name}")
         finally:
             cursor.close()
 
@@ -56,7 +54,7 @@ class Psycopg2Transaction(Transaction, driver=psycopg2):
         conn = cast(Psycopg2Connection, self._current.conn)
         cursor = conn.cursor()
         try:
-            cursor.execute(f'RELEASE SAVEPOINT {self._savepoint_name}')
+            cursor.execute(f"RELEASE SAVEPOINT {self._savepoint_name}")
         finally:
             cursor.close()
 
@@ -64,18 +62,17 @@ class Psycopg2Transaction(Transaction, driver=psycopg2):
         conn = cast(Psycopg2Connection, self._current.conn)
         cursor = conn.cursor()
         try:
-            cursor.execute(f'ROLLBACK TO SAVEPOINT {self._savepoint_name}')
-            cursor.execute(f'RELEASE SAVEPOINT {self._savepoint_name}')
+            cursor.execute(f"ROLLBACK TO SAVEPOINT {self._savepoint_name}")
+            cursor.execute(f"RELEASE SAVEPOINT {self._savepoint_name}")
         finally:
             cursor.close()
 
 
 class Psycopg2ConnectionValidator(ConnectionValidator, driver=psycopg2):
-
     def validate(self, conn):
         try:
             cursor = conn.cursor()
-            cursor.execute('SELECT 1')
+            cursor.execute("SELECT 1")
             cursor.fetchone()
             cursor.close()
         except Exception:

@@ -7,7 +7,6 @@ from ..transaction import Transaction
 
 
 class OracleDBTransaction(Transaction, driver=oracledb):
-
     @classmethod
     def enable_autocommit(cls, conn):
         conn.autocommit = True
@@ -15,12 +14,10 @@ class OracleDBTransaction(Transaction, driver=oracledb):
     def _enable_params(self):
         conn = cast(oracledb.Connection, self._current.conn)
         conn.autocommit = False
-        if level := self._params.get('level'):
+        if level := self._params.get("level"):
             cursor = conn.cursor()
             try:
-                cursor.execute(
-                    f'SET TRANSACTION ISOLATION LEVEL {level}'
-                )
+                cursor.execute(f"SET TRANSACTION ISOLATION LEVEL {level}")
             finally:
                 cursor.close()
 
@@ -29,11 +26,11 @@ class OracleDBTransaction(Transaction, driver=oracledb):
         conn.autocommit = True
 
     def _start_savepoint(self):
-        self._savepoint_name = f'sp_{id(self)}'
+        self._savepoint_name = f"sp_{id(self)}"
         conn = cast(oracledb.Connection, self._current.conn)
         cursor = conn.cursor()
         try:
-            cursor.execute(f'SAVEPOINT {self._savepoint_name}')
+            cursor.execute(f"SAVEPOINT {self._savepoint_name}")
         finally:
             cursor.close()
 
@@ -46,13 +43,12 @@ class OracleDBTransaction(Transaction, driver=oracledb):
         conn = cast(oracledb.Connection, self._current.conn)
         cursor = conn.cursor()
         try:
-            cursor.execute(f'ROLLBACK TO SAVEPOINT {self._savepoint_name}')
+            cursor.execute(f"ROLLBACK TO SAVEPOINT {self._savepoint_name}")
         finally:
             cursor.close()
 
 
 class OracleDBConnectionValidator(ConnectionValidator, driver=oracledb):
-
     def validate(self, conn):
         try:
             cursor = conn.cursor()
