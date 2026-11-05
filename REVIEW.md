@@ -158,17 +158,19 @@ SELECT ... FROM roots JOIN loans l ON l.id = roots.id LEFT JOIN loan_extensions 
 
 ## План задач
 
-| # | Задача | Объём |
-|---|---|---|
-| L1 | Уникальные имена bind (с учётом paramstyle), `inclause` с уникальными именами, пустой список, повторы для qmark/format/numeric, двойной bind после `bind('x')` | M |
-| L2 | Убрать `return` из `finally` в `Transaction.__exit__`, тест на сбой commit | S |
-| L3 | psycopg savepoint через `sql.Identifier`, тесты вложенных транзакций на PG | S |
-| L4 | `traverse`: скобки для And/Or/Not, XOR без оператора `XOR`, понятная ошибка при отсутствии макроса | S |
-| L5 | Типизация: `fetchone() -> Row \| None`, `one()`, `map_to(type[T]) -> MapperQuery[T]`, `Factory = Callable[..., Any]`, `paramstyle`, `py.typed` | M |
-| L6 | Маппер: accessor для функций, не терять отношения, строковые аннотации, `Assign(Class)`, lowercase `default_mapping`, опечатка `prefix`, namespace, дедуп корня в `all()`, колонки без `__` | M/L |
-| L7 | Сборка VO из колонок корня (`Loan.period`) | L |
-| L8 | `iter`/`scalars`/`execute`: держать соединение до исчерпания генератора или ошибка вне scope | M |
-| L9 | Неизвестный драйвер, autocommit MySQL/MSSQL, `encoding='utf-8'`, `_prepare`, `Engine.close()`, мёртвый код | M |
-| D1 | Исправить неверные примеры README | S |
-| D2 | Новые разделы: транзакции, scope, Engine, `templates_dirs`, criteria, маппинг, пагинация | M |
-| D3 | AGENTS.md и CHANGELOG | S |
+| # | Задача | Объём | Статус |
+|---|---|---|---|
+| L1 | Уникальные имена bind (с учётом paramstyle), `inclause` с уникальными именами, пустой список, повторы для qmark/format/numeric, двойной bind после `bind('x')` | M | сделано (`0aae33e`) |
+| L2 | Убрать `return` из `finally` в `Transaction.__exit__`, тест на сбой commit | S | сделано (`6a7669b`) |
+| L3 | psycopg savepoint через `sql.Identifier`, тесты вложенных транзакций на PG | S | сделано (`391659e`), проверено на PostgreSQL 14 |
+| L4 | `traverse`: скобки для And/Or/Not, XOR без оператора `XOR`, понятная ошибка при отсутствии макроса | S | сделано (`b956f94`, повторный рендер XOR — `0aae33e`) |
+| L5 | Типизация: `fetchone() -> Row \| None`, `one()`, `map_to(type[T]) -> MapperQuery[T]`, `Factory = Callable[..., Any]`, `paramstyle`, `py.typed` | M | |
+| L6 | Маппер: accessor для функций, не терять отношения, строковые аннотации, `Assign(Class)`, lowercase `default_mapping`, опечатка `prefix`, namespace, дедуп корня в `all()`, колонки без `__` | M/L | |
+| L7 | Сборка VO из колонок корня (`Loan.period`) | L | |
+| L8 | `iter`/`scalars`/`execute`: держать соединение до исчерпания генератора или ошибка вне scope | M | сделано (`0a0cb98`): `Rows` держит соединение, `execute()` вне scope — `DetachedCursor` |
+| L9 | Неизвестный драйвер, autocommit MySQL/MSSQL, `encoding='utf-8'`, `_prepare`, `Engine.close()`, мёртвый код | M | |
+| D1 | Исправить неверные примеры README | S | |
+| D2 | Новые разделы: транзакции, scope, Engine, `templates_dirs`, criteria, маппинг, пагинация | M | |
+| D3 | AGENTS.md и CHANGELOG | S | |
+
+Вне плана: classic-criteria поднят до `~=1.0` (`84d3d9a`); `uv.lock` обновить после выхода classic-criteria 1.0 на PyPI, до пуша.
