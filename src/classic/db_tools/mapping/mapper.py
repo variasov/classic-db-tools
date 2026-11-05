@@ -84,11 +84,16 @@ class FactoryCallPlan(NamedTuple):
 def plan_factory_call(
     param: Parameter,
     fields: tuple[Field, ...],
+    ctor_fields: frozenset[Field] = frozenset(),
 ) -> FactoryCallPlan:
     """Строит план вызова фабрики по её сигнатуре.
 
     Откатывается к полной kwargs-передаче, когда сигнатура недоступна
     (dict-фабрики, C-функции без сигнатуры) или поле не позиционное.
+
+    ctor_fields — поля, поставляемые не из колонок строки, а из собранных
+    объектов-отношений (Assign, передаваемый аргументом конструктора).
+    Они учитываются в порядке сигнатуры наравне с полями колонок.
     """
     factory = param.factory
     if isinstance(factory, type) and issubclass(factory, dict):
@@ -98,7 +103,7 @@ def plan_factory_call(
     except (TypeError, ValueError):
         return FactoryCallPlan((), fields)
 
-    field_set = frozenset(fields)
+    supplied = frozenset(fields) | ctor_fields
     named = {
         name
         for name, p in signature.parameters.items()
@@ -113,7 +118,7 @@ def plan_factory_call(
             inspect.Parameter.VAR_KEYWORD,
         ):
             break
-        if name in field_set:
+        if name in supplied:
             if accept_positional and p.kind in (
                 inspect.Parameter.POSITIONAL_ONLY,
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
@@ -129,9 +134,43 @@ def plan_factory_call(
     return FactoryCallPlan(tuple(positional), tuple(keyword_))
 
 
+def _ctor_assign_rels(
+    param: Parameter,
+    rels: dict[Field, Relationship],
+) -> dict[Field, Relationship]:
+    """Assign-отношения, которые можно передать аргументами конструктора.
+
+    Отбираются отношения, чьё поле присутствует в сигнатуре фабрики:
+    такой объект-значение собирается до вызова фабрики и подаётся в неё,
+    что позволяет конструировать обязательные поля-VO и frozen-агрегаты.
+    Остальные Assign применяются присваиванием после конструирования.
+    """
+    assigns = {f: r for f, r in rels.items() if isinstance(r, Assign)}
+    if not assigns:
+        return {}
+    factory = param.factory
+    if isinstance(factory, type) and issubclass(factory, dict):
+        return {}
+    try:
+        signature = inspect.signature(cast("Any", factory))
+    except (TypeError, ValueError):
+        return {}
+    params = {
+        name
+        for name, p in signature.parameters.items()
+        if p.kind
+        not in (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        )
+    }
+    return {f: r for f, r in assigns.items() if f in params}
+
+
 class Context:
     mapper: dict[Prefix, Parameter]
     rels: dict[Prefix, dict[Field, Relationship]]
+    ctor_rels: dict[Prefix, dict[Field, Relationship]]
     result: ResultParam
     columns: tuple[Column, ...] | None
     fields_to_columns: dict[Prefix, dict[Field, tuple[int, Column]]]
@@ -150,10 +189,15 @@ class Context:
         self.fields_to_columns = defaultdict(dict)
         self.factory_plans = {}
         self.parse_columns(columns, mapping)
+        self.ctor_rels = {
+            prefix: _ctor_assign_rels(param, self.rels.get(prefix, {}))
+            for prefix, param in self.mapper.items()
+        }
         for prefix, fields in self.fields_to_columns.items():
             self.factory_plans[prefix] = plan_factory_call(
                 self.mapper[prefix],
                 tuple(fields),
+                frozenset(self.ctor_rels.get(prefix, {})),
             )
 
     @staticmethod
@@ -264,6 +308,14 @@ class StringCodegen:
                         f"{prefix}_{field}_seen",
                         self.used,
                     )
+        # имена переменных для Assign-отношений, подаваемых в конструктор
+        self.relvar_names: dict[tuple[Prefix, Field], str] = {}
+        for prefix, crels in ctx.ctor_rels.items():
+            for field in crels:
+                self.relvar_names[(prefix, field)] = safe_ident(
+                    f"{prefix}_{field}_arg",
+                    self.used,
+                )
         # фабрики -> глобальные имена f0..fN
         self.factory_names: dict[int, str] = {}
         self.namespace: dict[str, Any] = {}
@@ -282,15 +334,41 @@ class StringCodegen:
     def factory_call(self, prefix: Prefix, param: Parameter) -> str:
         plan = self.ctx.factory_plans[prefix]
         fields = self.ctx.fields_to_columns[prefix]
+        ctor = self.ctx.ctor_rels.get(prefix, {})
         ref = self.factory_ref(param)
-        args = [f"row[{fields[f][INDEX]}]" for f in plan.positional]
+        args = [
+            self.relvar_names[(prefix, f)]
+            if f in ctor
+            else f"row[{fields[f][INDEX]}]"
+            for f in plan.positional
+        ]
         kw = plan.keyword
         if all(is_ident(f) for f in kw):
-            args += [f"{f}=row[{fields[f][INDEX]}]" for f in kw]
+            args += [
+                f"{f}={self.relvar_names[(prefix, f)]}"
+                if f in ctor
+                else f"{f}=row[{fields[f][INDEX]}]"
+                for f in kw
+            ]
         elif kw:
-            pairs = ", ".join(f"{f!r}: row[{fields[f][INDEX]}]" for f in kw)
+            pairs = ", ".join(
+                f"{f!r}: {self.relvar_names[(prefix, f)]}"
+                if f in ctor
+                else f"{f!r}: row[{fields[f][INDEX]}]"
+                for f in kw
+            )
             args.append(f"**{{{pairs}}}")
         return f"{ref}({', '.join(args)})"
+
+    def render_ctor_args(self, prefix: Prefix, indent: int) -> None:
+        """Собирает объекты-значения для аргументов конструктора."""
+        for field, rel in self.ctx.ctor_rels.get(prefix, {}).items():
+            right_mapfn, _, _ = self.names[rel.target]
+            var = self.relvar_names[(prefix, field)]
+            if isinstance(self.ctx.mapper[rel.target], Entity):
+                self.emit(indent, f"{var}, _ = {right_mapfn}(row)")
+            else:
+                self.emit(indent, f"{var} = {right_mapfn}(row)")
 
     def render_none_check(self, columns: list[int]) -> str:
         parts = [f"row[{c}] is None" for c in columns]
@@ -313,6 +391,9 @@ class StringCodegen:
         _, left_var, _ = self.names[prefix]
 
         if isinstance(rel, Assign):
+            if field in self.ctx.ctor_rels.get(prefix, {}):
+                # Отношение уже передано аргументом конструктора.
+                return
             attr_form = accessor == "attr" and is_ident(field)
             if isinstance(right_param, Entity):
                 self.emit(indent, f"{right_var}, _ = {right_mapfn}(row)")
@@ -391,6 +472,7 @@ class StringCodegen:
             self.emit(i, f"{var}_id = ({cols},)")
         self.emit(i, f"obj_with_rels = {idmap}.get({var}_id)")
         self.emit(i, "if obj_with_rels is None:")
+        self.render_ctor_args(prefix, i + 1)
         self.emit(i + 1, f"{var} = {self.factory_call(prefix, entity)}")
         rel_sets = [
             self.relset_names[(prefix, f_)]
@@ -423,6 +505,7 @@ class StringCodegen:
         if value.reduce_none:
             self.emit(i, f"if {self.render_none_check(columns)}:")
             self.emit(i + 1, "return None")
+        self.render_ctor_args(prefix, i)
         self.emit(i, f"{var} = {self.factory_call(prefix, value)}")
         for field, rel in ctx.rels[prefix].items():
             self.render_rel(prefix, field, rel, ctx.accessor(value), i)
