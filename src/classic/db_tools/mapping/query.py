@@ -208,8 +208,12 @@ class MapperQuery(Generic[Result]):
         if params is None:
             return kwargs
         if isinstance(params, dict):
+            if kwargs:
+                return {**params, **kwargs}
             return cast("dict[str, Any]", params)
-        return params.__dict__
+        if isinstance(params, tuple):
+            return cast("dict[str, Any]", params)
+        return {**params.__dict__, **kwargs}
 
     def _execute(
         self,

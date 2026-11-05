@@ -11,11 +11,12 @@ class PyMSSQLTransaction(Transaction, driver=pymssql):
 
     @classmethod
     def enable_autocommit(cls, conn: Any) -> None:
-        pass
+        conn.autocommit(True)
 
     def _enable_params(self) -> None:
+        conn: Any = self._current.conn
+        conn.autocommit(False)
         if level := self._params.get("level"):
-            conn: Any = self._current.conn
             cursor = conn.cursor()
             try:
                 cursor.execute(f"SET TRANSACTION ISOLATION LEVEL {level}")
@@ -23,8 +24,8 @@ class PyMSSQLTransaction(Transaction, driver=pymssql):
                 cursor.close()
 
     def _restore_params(self) -> None:
+        conn: Any = self._current.conn
         if self._params.get("level"):
-            conn: Any = self._current.conn
             cursor = conn.cursor()
             try:
                 cursor.execute(
@@ -32,6 +33,7 @@ class PyMSSQLTransaction(Transaction, driver=pymssql):
                 )
             finally:
                 cursor.close()
+        conn.autocommit(True)
 
     def _start_savepoint(self) -> None:
         self._savepoint_name = f"sp_{id(self)}"

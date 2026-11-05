@@ -61,7 +61,6 @@ class Engine(Generic[RowT]):
     _mapper: Mapper
     _factory: Callable[[], Any]
     _pool: ConnectionPool
-    _pool_cls: type[ConnectionPool]
     _logger: logging.Logger
 
     @overload
@@ -154,8 +153,16 @@ class Engine(Generic[RowT]):
             assert callable(factory)
             self._factory = factory
 
-        self._pool_cls = pool_class
-        self._tx_cls = Transaction.implementations[self.driver]
+        try:
+            self._tx_cls = Transaction.implementations[self.driver]
+        except KeyError:
+            raise ValueError(
+                f"Driver {self.driver!r} is not supported: "
+                f"no Transaction implementation registered for it. "
+                f"Register one by subclassing Transaction "
+                f"with driver=<module>."
+            ) from None
+
         self._pool = pool_class(
             driver,
             self._factory,
@@ -340,3 +347,14 @@ class Engine(Generic[RowT]):
                 return fn(*args, **kwargs)
 
         return wrapper
+
+    def close(self) -> None:
+        """
+        Закрывает все свободные на данный момент соединения пула.
+
+        Соединения, захваченные активными блоками conn()/transaction(),
+        останутся открытыми и вернутся в пул по выходе из блока.
+        Движок остается рабочим: при необходимости пул откроет
+        новые соединения.
+        """
+        self._pool.close()

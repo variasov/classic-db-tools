@@ -196,7 +196,6 @@ ignore_names = [
     "PsycopgTxParams",
     "Psycopg2Connection",
     "COLUMN",
-    "_pool_cls",
     # protocol / override parameters and attributes (signature is fixed)
     "autocommit",
     "operation",

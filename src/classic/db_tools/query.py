@@ -413,9 +413,12 @@ class Query(Generic[RowT]):
 
     @staticmethod
     def _prepare(params: QueryParams, kwargs: dict[str, Any]) -> dict[str, Any]:
-        params_: dict[str, Any] = params
         if params is None:
-            params_ = kwargs
-        elif not isinstance(params, (dict, tuple)):
-            params_ = params.__dict__
-        return params_
+            return kwargs
+        if isinstance(params, dict):
+            if kwargs:
+                return {**params, **kwargs}
+            return params
+        if isinstance(params, tuple):
+            return cast("dict[str, Any]", params)
+        return {**params.__dict__, **kwargs}

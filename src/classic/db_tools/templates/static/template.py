@@ -24,7 +24,7 @@ class StaticTemplate(Template):
         self.filepath: str | None
         if filepath:
             self.filepath = filepath
-            with open(self.filepath) as file:
+            with open(self.filepath, encoding="utf-8") as file:
                 self.content = file.read()
         elif content:
             self.filepath = None

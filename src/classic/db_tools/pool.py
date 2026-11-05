@@ -83,9 +83,15 @@ class ConnectionPool:
             self.validate = validator.validate
             self.before_release = validator.before_release
         elif validator == "auto":
-            validator = ConnectionValidator.validators[driver]()
-            self.validate = validator.validate
-            self.before_release = validator.before_release
+            validator_cls = ConnectionValidator.validators.get(driver)
+            if validator_cls is None:
+                # Неизвестный драйвер: валидация отключена
+                self.validate = None
+                self.before_release = None
+            else:
+                auto = validator_cls()
+                self.validate = auto.validate
+                self.before_release = auto.before_release
         else:
             self.validate = None
             self.before_release = None
@@ -136,6 +142,23 @@ class ConnectionPool:
         connection.
         """
         return ContextManagerWrappedConnection(self)
+
+    def close(self) -> None:
+        """
+        Close all idle connections currently held by the pool.
+
+        Checked-out connections are not tracked and remain open until
+        released; on release they are validated (or closed) as usual.
+        """
+        while True:
+            try:
+                conn = self._pool.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                conn.close()
+            except Exception:
+                logger.warning("Error closing pooled connection", exc_info=True)
 
     def _connect(self) -> ConnType:
         conn = self.connection_factory()
