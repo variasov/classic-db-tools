@@ -5,19 +5,19 @@ Python library for SQL queries as Jinja2 templates. Targets multiple DB drivers 
 ## Commands
 
 - `uv sync` — install all deps (including dev)
-- `uv run ruff check sources/` — lint
+- `uv run ruff check src/` — lint
 - `uv run pytest tests/` — run all tests (requires running PostgreSQL)
 - `uv build` — build package
 
 ## Project layout
 
 ```
-sources/classic/db_tools/   ← namespace package: classic.db_tools
+src/classic/db_tools/   ← namespace package: classic.db_tools
 tests/                       ← pytest, requires PostgreSQL (see conftest.py)
 example.sql                  ← sample SQL
 ```
 
-Package source: `sources/classic/db_tools/`. Tests live at repo root `tests/`.
+Package source: `src/classic/db_tools/`. Tests live at repo root `tests/`.
 
 ## Testing
 

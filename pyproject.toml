@@ -36,7 +36,7 @@ dependencies = [
 Homepage = "https://github.com/variasov/classic-db-tools"
 
 [tool.setuptools.packages.find]
-where = ['sources']
+where = ['src']
 namespaces = true
 
 [project.optional-dependencies]
@@ -73,3 +73,14 @@ dev = [
     "classic-criteria~=1.0",
     "psycopg[binary]~=3.3",
 ]
+
+[tool.ruff]
+extend-exclude = ["mutants"]
+target-version = "py310"
+line-length = 80
+
+[tool.ruff.format]
+exclude = ["*.md"]  # ruff would reformat python snippets in README
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -99,3 +99,7 @@ Temporary Items
 .apdisk
 .idea/
 .serena/
+
+# mutmut
+mutants/
+.venv-*/
