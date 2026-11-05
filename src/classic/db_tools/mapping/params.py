@@ -6,6 +6,7 @@ from typing import (
     TypeAlias,
     get_args,
     get_origin,
+    get_type_hints,
 )
 
 from frozendict import frozendict
@@ -18,9 +19,13 @@ class Relationship:
     target: str
 
     def __init__(self, target: Any) -> None:
-        if not isinstance(target, str):
-            target = target.__class__.__name__
-        object.__setattr__(self, "target", target.lower())
+        if isinstance(target, str):
+            name = target
+        elif isinstance(target, type):
+            name = target.__name__
+        else:
+            name = target.__class__.__name__
+        object.__setattr__(self, "target", name.lower())
 
 
 @dataclass(frozen=True, init=False)
@@ -52,32 +57,91 @@ class Parameter:
     def _parse_relationships(self, rels: dict[str, Relationship]) -> None:
         try:
             signature = inspect.signature(self.factory)
-        except ValueError:
+        except (TypeError, ValueError):
             object.__setattr__(self, "relationships", frozendict(rels))
             return
 
+        hints = _type_hints(self.factory)
+
         new_rels: dict[str, Relationship] = {}
         for name_, sign_param in signature.parameters.items():
+            # *args/**kw в отношения не превращаются
+            if sign_param.kind in (
+                inspect.Parameter.VAR_KEYWORD,
+                inspect.Parameter.VAR_POSITIONAL,
+            ):
+                continue
+
             # User parameters have priority
             if rel := rels.get(name_):
                 new_rels[name_] = rel
                 continue
 
             # Trying to create relationship automatically
-            annot = sign_param.annotation
+            annot = hints.get(name_, sign_param.annotation)
+            if annot is None or annot is inspect.Parameter.empty:
+                continue
             origin = get_origin(annot)
             args = get_args(annot)
             try:
                 if origin is None:
-                    new_rels[name_] = Assign(annot.__name__.lower())
+                    if name := _annot_name(annot):
+                        new_rels[name_] = Assign(name)
                 elif issubclass(origin, list):
-                    new_rels[name_] = Append(args[0].__name__.lower())
-                elif issubclass(origin, set):
-                    new_rels[name_] = Add(args[0].__name__.lower())
+                    if args and (name := _annot_name(args[0])):
+                        new_rels[name_] = Append(name)
+                elif (
+                    issubclass(origin, set)
+                    and args
+                    and (name := _annot_name(args[0]))
+                ):
+                    new_rels[name_] = Add(name)
             except TypeError:
                 continue
 
+        # Заданные вручную отношения для полей вне сигнатуры фабрики
+        # сохраняются: они применяются после конструирования объекта
+        # (например, к полям с default_factory у dataclass).
+        for name_ in set(rels) - set(new_rels):
+            new_rels[name_] = rels[name_]
+
         object.__setattr__(self, "relationships", frozendict(new_rels))
+
+
+def _annot_name(annot: Any) -> str | None:
+    """Имя типа из аннотации для авто-отношения.
+
+    Строковая аннотация (from __future__ import annotations) сама
+    является именем типа.
+    """
+    if isinstance(annot, str):
+        return annot.lower()
+    name = getattr(annot, "__name__", None)
+    return name.lower() if name else None
+
+
+def _get_hints(target: Any) -> dict[str, Any]:
+    try:
+        return get_type_hints(target)
+    except (NameError, TypeError, AttributeError, SyntaxError):
+        return {}
+
+
+def _type_hints(factory: Factory) -> dict[str, Any]:
+    """Разрешает строковые аннотации фабрики; при неудаче — пусто.
+
+    Для классов пробует и аннотации класса (поля dataclass), и
+    аннотации __init__: у dataclass __init__ синтезирован и его
+    __globals__ не содержат пользовательских типов.
+    """
+    if inspect.isclass(factory):
+        targets: tuple[Any, ...] = (factory.__init__, factory)
+    else:
+        targets = (factory,)
+    hints: dict[str, Any] = {}
+    for target in targets:
+        hints.update(_get_hints(target))
+    return hints
 
 
 @dataclass(frozen=True, init=False)

@@ -28,7 +28,7 @@ class TestEngineConstructor:
     def test_rejects_non_callable_factory(self):
         with pytest.raises(AssertionError):
             # намеренно неверная фабрика: проверяем runtime-assert
-            Engine(sqlite3, "not_callable")  # pyright: ignore[reportCallIssue, reportArgumentType]  # noqa: E501
+            Engine(sqlite3, "not_callable")  # pyright: ignore[reportCallIssue, reportArgumentType]
 
     def test_custom_factory(self):
         calls: list[int] = []

@@ -32,6 +32,9 @@ Column = str
 INDEX = 0
 COLUMN = 1
 
+# Число частей имени колонки prefix__field
+COLUMN_PARTS = 2
+
 
 class Mapper:
     def __init__(self, mapping: Mapping) -> None:
@@ -155,14 +158,13 @@ class Context:
 
     @staticmethod
     def accessor(param: Parameter) -> Accessor:
-        try:
-            return (
-                "item"
-                if issubclass(cast("type[Any]", param.factory), dict)
-                else "attr"
-            )
-        except TypeError:
+        # Только dict-подобные фабрики дают item-доступ; для функций
+        # и прочих классов отношения применяются через атрибуты.
+        if isinstance(param.factory, type) and issubclass(
+            param.factory, dict
+        ):
             return "item"
+        return "attr"
 
     def parse_columns(
         self,
@@ -171,19 +173,23 @@ class Context:
     ) -> None:
         self.columns = columns
         for index_, column in enumerate(columns):
-            try:
-                prefix, field_name = column.lower().split("__")
-            except ValueError as e:
+            parts = column.lower().split("__")
+            if len(parts) == 1:
+                # Колонка без префикса (COUNT(*) OVER() и т.п.):
+                # в маппинге не участвует.
+                continue
+            if len(parts) != COLUMN_PARTS:
                 raise ValueError(
                     f"Column {column} are not contains name of cls "
                     f"and name of field, concatenated with __"
-                ) from e
+                )
+            prefix, field_name = parts
 
             param = mapping.get(prefix)
             if not param:
                 raise ValueError(f"Prefix {prefix} not found in mapper")
 
-            if param not in self.mapper:
+            if prefix not in self.mapper:
                 self.mapper[prefix] = param
 
                 for prefix_, param_ in mapping.items():
@@ -199,8 +205,16 @@ class Context:
 
 # Имена, занятые самим сгенерированным кодом
 RESERVED = {
-    "row", "rows", "row_", "obj", "last_obj", "obj_with_rels",
-    "result", "set", "map", "id",
+    "row",
+    "rows",
+    "row_",
+    "obj",
+    "last_obj",
+    "obj_with_rels",
+    "result",
+    "set",
+    "map",
+    "id",
 }
 
 
@@ -249,7 +263,8 @@ class StringCodegen:
             for field, rel in rels.items():
                 if isinstance(rel, (Append, Add)):
                     self.relset_names[(prefix, field)] = safe_ident(
-                        f"{prefix}_{field}_seen", self.used,
+                        f"{prefix}_{field}_seen",
+                        self.used,
                     )
         # фабрики -> глобальные имена f0..fN
         self.factory_names: dict[int, str] = {}
@@ -275,9 +290,7 @@ class StringCodegen:
         if all(is_ident(f) for f in kw):
             args += [f"{f}=row[{fields[f][INDEX]}]" for f in kw]
         elif kw:
-            pairs = ", ".join(
-                f"{f!r}: row[{fields[f][INDEX]}]" for f in kw
-            )
+            pairs = ", ".join(f"{f!r}: row[{fields[f][INDEX]}]" for f in kw)
             args.append(f"**{{{pairs}}}")
         return f"{ref}({', '.join(args)})"
 
@@ -346,8 +359,7 @@ class StringCodegen:
             self.emit(indent, f"{right_var}, {right_id} = {right_mapfn}(row)")
             self.emit(
                 indent,
-                f"if {right_var} is not None "
-                f"and {right_id} not in {relset}:",
+                f"if {right_var} is not None and {right_id} not in {relset}:",
             )
             self.emit(indent + 1, f"{relset}.add({right_id})")
             self.emit(indent + 1, f"{coll}.{method}({right_var})")

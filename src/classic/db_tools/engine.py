@@ -12,11 +12,9 @@ from typing import (
     overload,
 )
 
-from frozendict import frozendict
-
 from .conn_scope import ConnectionScope
 from .dbapi import Connection, DBModule, RowT
-from .mapping import Mapper, Parameter
+from .mapping import Mapper, Parameter, create_mapping
 from .pool import ConnectionPool
 from .query import Query
 from .scope import Scope
@@ -169,7 +167,7 @@ class Engine(Generic[RowT]):
 
         self._str_templates_static_by_default = str_templates_static_by_default
 
-        self._mapper = Mapper(frozendict(default_mapping or {}))
+        self._mapper = Mapper(create_mapping(**(default_mapping or {})))
 
         self.templates_paths: Sequence[PathsT]
         if templates_dirs is None:
