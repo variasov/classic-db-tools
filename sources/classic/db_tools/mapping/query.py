@@ -1,10 +1,12 @@
 from functools import partial
 from typing import (
-    Any, Generator, Generic, Dict, TypeVar, Type,
-    Callable, ContextManager, Sequence, Union, cast,
+    Any, Generator, Generic, Dict, Iterator, TypeVar, Type,
+    Callable, Sequence, Union, cast,
 )
 
-from ..dbapi import Connection, Cursor, Row
+from ..conn_scope import ConnectionScope
+from ..dbapi import Cursor, Row
+from ..rows import Rows
 from ..templates import Template
 
 from .mapper import Mapper
@@ -26,7 +28,7 @@ class MapperQuery(Generic[Result]):
 
     def __init__(
         self,
-        conn_scope: Callable[[], ContextManager[Connection]],
+        conn_scope: Callable[[], ConnectionScope],
         tmpl_factory: Callable[[], Template],
         result: str,
         mapper: Mapper,
@@ -101,9 +103,20 @@ class MapperQuery(Generic[Result]):
         batch: int | None = 500,
         cursor: Cursor | None = None,
         **kwargs: Any,
-    ) -> Generator[Result, None, None]:
+    ) -> Rows[Result]:
         """
-        Возвращает итератор, возвращающий по одному объекту с его отношениями за раз.
+        Возвращает итератор Rows, возвращающий по одному объекту
+        с его отношениями за раз.
+
+        SQL выполняется сразу при вызове, а не при первом next().
+
+        Внутри engine.conn()/engine.transaction() используется соединение
+        из scope. Вне scope итератор держит собственное соединение из пула
+        до исчерпания строк, вызова close() или выхода из блока with.
+        Рекомендуется использовать with:
+
+            with query.iter() as objects:
+                ...
 
         Перебирает результаты запроса батчами указанного размера.
 
@@ -116,21 +129,20 @@ class MapperQuery(Generic[Result]):
 
         prepared = self._prepare(params, kwargs)
 
-        if cursor is not None:
-            return self._iter(cursor, prepared, batch)
-
-        with self._conn_scope() as conn:
-            return self._iter(conn.cursor(), prepared, batch)
+        return Rows.start(
+            self._conn_scope,
+            lambda cur: self._iter(cur, prepared, batch),
+            cursor,
+        )
 
     def _iter(
         self,
         cursor: Cursor,
         params: Dict[str, Any],
         batch: int | None,
-    ) -> Generator[Result, None, None]:
+    ) -> Iterator[Result]:
         mapper = self._execute(cursor, params)
-        for obj in mapper(self._iterate_rows(cursor, batch)):
-            yield obj
+        return iter(mapper(self._iterate_rows(cursor, batch)))
 
     def one(
         self,

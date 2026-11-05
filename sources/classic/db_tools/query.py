@@ -1,5 +1,5 @@
 from typing import (
-    Any, Iterable, Generator, List, Sequence, Union, Dict,
+    Any, Iterable, Iterator, List, Sequence, Union, Dict,
     Callable, Optional, cast,
 )
 
@@ -7,6 +7,8 @@ from .mapping import Mapper, Result, Parameter, MapperQuery
 from .dbapi import Row, Cursor
 from .templates import Template
 from .conn_scope import ConnectionScope
+from .detached_cursor import DetachedCursor
+from .rows import Rows
 
 
 QueryParams = Union[Dict[str, Any], Any]
@@ -68,7 +70,11 @@ class Query:
         """
         Запускает выполнение запроса с указанными параметрами.
 
-        Возвращает курсор.
+        Возвращает курсор. Внутри engine.conn()/engine.transaction()
+        это настоящий курсор драйвера. Вне scope соединение возвращается
+        в пул сразу после выполнения, а результатом будет DetachedCursor,
+        у которого доступен только rowcount; остальные обращения
+        вызывают CursorOutsideScopeError.
 
         Параметр cursor позволяет передать кастомный cursor.
 
@@ -85,8 +91,22 @@ class Query:
         if cursor is not None:
             return self._tmpl_factory().execute(cursor, prepared)
 
-        with self._conn_scope() as conn:
-            return self._tmpl_factory().execute(conn.cursor(), prepared)
+        return self._run_detachable(
+            lambda cur: self._tmpl_factory().execute(cur, prepared),
+        )
+
+    def _run_detachable(self, run: Callable[[Cursor], Cursor]) -> Cursor:
+        scope = self._conn_scope()
+        in_scope = scope.held_conn() is not None
+        with scope as conn:
+            cur = conn.cursor()
+            if in_scope:
+                return run(cur)
+            try:
+                rowcount = run(cur).rowcount
+            finally:
+                cur.close()
+        return cast(Cursor, DetachedCursor(rowcount))
 
     def executemany(
         self,
@@ -96,7 +116,8 @@ class Query:
         """
         Запускает множественное выполнение запроса с указанными параметрами.
 
-        Возвращает курсор.
+        Возвращает курсор. Вне engine.conn()/engine.transaction() возвращает
+        DetachedCursor с доступным только rowcount (см. execute).
 
         Параметр cursor позволяет передать кастомный cursor.
 
@@ -119,8 +140,9 @@ class Query:
         if cursor is not None:
             return self._tmpl_factory().executemany(cursor, prepared)
 
-        with self._conn_scope() as conn:
-            return self._tmpl_factory().executemany(conn.cursor(), prepared)
+        return self._run_detachable(
+            lambda cur: self._tmpl_factory().executemany(cur, prepared),
+        )
 
     def all(
         self,
@@ -161,12 +183,22 @@ class Query:
         batch: int = 500,
         cursor: Cursor | None = None,
         **kwargs: Any,
-    ) -> Generator[Any, None, None]:
+    ) -> Rows[Any]:
         """
         Запускает выполнение запроса с указанными параметрами.
 
-        Возвращает итератор, который вытаскивает батчи указанного размера из курсора,
-        и возвращает по одному результату запроса.
+        Возвращает итератор Rows, который вытаскивает батчи указанного
+        размера из курсора, и возвращает по одному результату запроса.
+
+        SQL выполняется сразу при вызове, а не при первом next().
+
+        Внутри engine.conn()/engine.transaction() используется соединение
+        из scope. Вне scope итератор держит собственное соединение из пула
+        до исчерпания строк, вызова close() или выхода из блока with.
+        Рекомендуется использовать with:
+
+            with query.iter() as rows:
+                ...
 
         Параметр batch позволяет задать размер батча.
         Параметр cursor позволяет передать кастомный cursor.
@@ -180,25 +212,20 @@ class Query:
 
         prepared = self._prepare(params, kwargs)
 
-        if cursor is not None:
-            return self._iter(cursor, prepared, batch)
-
-        with self._conn_scope() as conn:
-            return self._iter(conn.cursor(), prepared, batch)
+        return Rows.start(
+            self._conn_scope,
+            lambda cur: self._iter(cur, prepared, batch),
+            cursor,
+        )
 
     def _iter(
         self,
         cursor: Cursor,
         params: Dict[str, Any],
         batch: int,
-    ) -> Generator[Any, None, None]:
+    ) -> Iterator[Any]:
         cursor = self._tmpl_factory().execute(cursor, params)
-        while True:
-            batch_ = cursor.fetchmany(batch)
-            if not batch_:
-                return
-            for row in batch_:
-                yield row
+        return self._fetch_rows(cursor, batch)
 
     def one(
         self,
@@ -285,12 +312,22 @@ class Query:
         batch: int = 500,
         cursor: Cursor | None = None,
         **kwargs: Any,
-    ) -> Generator[Any, None, None]:
+    ) -> Rows[Any]:
         """
         Запускает выполнение запроса с указанными параметрами.
 
-        Возвращает итератор, возвращающий по одному значения первого столбца
-        из каждой строки.
+        Возвращает итератор Rows, возвращающий по одному значения первого
+        столбца из каждой строки.
+
+        SQL выполняется сразу при вызове, а не при первом next().
+
+        Внутри engine.conn()/engine.transaction() используется соединение
+        из scope. Вне scope итератор держит собственное соединение из пула
+        до исчерпания строк, вызова close() или выхода из блока with.
+        Рекомендуется использовать with:
+
+            with query.scalars() as values:
+                ...
 
         Параметр batch позволяет задать размер батча.
         Параметр cursor позволяет передать кастомный cursor.
@@ -303,25 +340,29 @@ class Query:
 
         prepared = self._prepare(params, kwargs)
 
-        if cursor is not None:
-            return self._scalars(cursor, prepared, batch)
-
-        with self._conn_scope() as conn:
-            return self._scalars(conn.cursor(), prepared, batch)
+        return Rows.start(
+            self._conn_scope,
+            lambda cur: self._scalars(cur, prepared, batch),
+            cursor,
+        )
 
     def _scalars(
         self,
         cursor: Cursor,
         params: Dict[str, Any],
         batch: int,
-    ) -> Generator[Any, None, None]:
+    ) -> Iterator[Any]:
         cursor = self._tmpl_factory().execute(cursor, params)
+        return (row[0] for row in self._fetch_rows(cursor, batch))
+
+    @staticmethod
+    def _fetch_rows(cursor: Cursor, batch: int) -> Iterator[Row]:
         while True:
             batch_ = cursor.fetchmany(batch)
             if not batch_:
                 return
             for row in batch_:
-                yield row[0]
+                yield row
 
     def rowcount(
         self,

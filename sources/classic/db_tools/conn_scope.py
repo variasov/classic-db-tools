@@ -24,6 +24,22 @@ class ConnectionScope:
         self._current = scope
         self._first = None
 
+    def held_conn(self) -> Optional[Connection]:
+        """
+        Возвращает соединение текущего Scope или None, если его нет.
+        """
+        return self._current.conn
+
+    def acquire_detached(self) -> Connection:
+        """
+        Берет из пула отдельное соединение, не регистрируя его в Scope.
+        Возвращать нужно через release_detached.
+        """
+        return cast(Connection, self._conn_pool.acquire())
+
+    def release_detached(self, conn: Connection) -> None:
+        self._conn_pool.release(conn)
+
     def __enter__(self) -> Connection:
         if self._current.conn is None:
             self._current.conn = self._conn_pool.acquire()
