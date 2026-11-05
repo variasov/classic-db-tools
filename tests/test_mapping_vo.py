@@ -63,6 +63,33 @@ class LoanWithPostField:
     period: object = field(init=False, default=None)
 
 
+@dataclass(frozen=True)
+class Status:
+    title: str = ""
+
+
+@dataclass(frozen=True)
+class LoanWithTwoVO:
+    id: int
+    period: Period
+    status: Status
+
+
+class LoanKwOnly:
+    def __init__(
+        self,
+        id: int,  # noqa: A002
+        amount: int,
+        period: Period,
+        *,
+        note: str = "",
+    ) -> None:
+        self.id = id
+        self.amount = amount
+        self.period = period
+        self.note = note
+
+
 class FakeCursor:
     def __init__(self, columns, rows):
         self.description = tuple((c,) for c in columns)
@@ -163,6 +190,44 @@ class TestFrozenAggregateVO:
             [(1, None, None), (2, 5, "g5")],
         )
         assert owners == [Owner(1, None), Owner(2, Group(5, "g5"))]
+
+    def test_two_ctor_assigns(self):
+        (loan,) = _map(
+            {
+                "loan": Entity(
+                    LoanWithTwoVO,
+                    "id",
+                    period=Assign("period"),
+                    status=Assign("status"),
+                ),
+                "period": Value(Period),
+                "status": Value(Status),
+            },
+            "loan",
+            (
+                "loan__id",
+                "period__start",
+                "period__end",
+                "status__title",
+            ),
+            [(1, 10, 20, "new")],
+        )
+        assert loan == LoanWithTwoVO(1, Period(10, 20), Status("new"))
+
+    def test_keyword_only_vo_param(self):
+        (loan,) = _map(
+            {
+                "loan": Entity(LoanKwOnly, "id", period=Assign("period")),
+                "period": Value(Period),
+            },
+            "loan",
+            ("loan__id", "loan__amount", "period__start", "period__end"),
+            [(1, 100, 10, 20)],
+        )
+        assert loan.id == 1
+        assert loan.amount == 100
+        assert loan.period == Period(10, 20)
+        assert loan.note == ""
 
     def test_assign_not_in_signature_post_assigned(self):
         (loan,) = _map(
