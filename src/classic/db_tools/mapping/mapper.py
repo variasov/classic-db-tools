@@ -1,4 +1,5 @@
 import ast
+import inspect
 import threading
 from collections import defaultdict
 from collections.abc import Generator, Iterable
@@ -67,12 +68,73 @@ class ResultParam(NamedTuple):
     param: Parameter
 
 
+class FactoryCallPlan(NamedTuple):
+    """План вызова фабрики: какие поля подать позиционно, какие по имени.
+
+    Позиционная передача заметно дешевле kwargs на каждом вызове,
+    поэтому поля, идущие подряд с начала сигнатуры фабрики, подаются
+    позиционно, остальные — по имени.
+    """
+
+    positional: tuple[Field, ...]
+    keyword: tuple[Field, ...]
+
+
+def plan_factory_call(
+    param: Parameter,
+    fields: tuple[Field, ...],
+) -> FactoryCallPlan:
+    """Строит план вызова фабрики по её сигнатуре.
+
+    Откатывается к полной kwargs-передаче, когда сигнатура недоступна
+    (dict-фабрики, C-функции без сигнатуры) или поле не позиционное.
+    """
+    factory = param.factory
+    if isinstance(factory, type) and issubclass(factory, dict):
+        return FactoryCallPlan((), fields)
+    try:
+        signature = inspect.signature(factory)
+    except (TypeError, ValueError):
+        return FactoryCallPlan((), fields)
+
+    field_set = frozenset(fields)
+    named = {
+        name
+        for name, p in signature.parameters.items()
+        if p.kind is not inspect.Parameter.VAR_KEYWORD
+    }
+    positional: list[Field] = []
+    keyword: list[Field] = []
+    accept_positional = True
+    for name, p in signature.parameters.items():
+        if p.kind in (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        ):
+            break
+        if name in field_set:
+            if accept_positional and p.kind in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            ):
+                positional.append(name)
+            else:
+                keyword.append(name)
+        else:
+            # Пропуск параметра: последующие поля позиционно не подать.
+            accept_positional = False
+    # Поля вне сигнатуры (уйдут в **kw или дадут TypeError, как и раньше).
+    keyword.extend(f for f in fields if f not in named)
+    return FactoryCallPlan(tuple(positional), tuple(keyword))
+
+
 class Context:
     mapper: dict[Prefix, Parameter]
     rels: dict[Prefix, dict[Field, Relationship]]
     result: ResultParam
     columns: tuple[Column, ...] | None
     fields_to_columns: dict[Prefix, dict[Field, tuple[int, Column]]]
+    factory_plans: dict[Prefix, FactoryCallPlan]
 
     def __init__(
         self,
@@ -85,7 +147,13 @@ class Context:
         self.result = ResultParam(result, mapping[result])
         self.columns = None
         self.fields_to_columns = defaultdict(dict)
+        self.factory_plans = {}
         self.parse_columns(columns, mapping)
+        for prefix, fields in self.fields_to_columns.items():
+            self.factory_plans[prefix] = plan_factory_call(
+                self.mapper[prefix],
+                tuple(fields),
+            )
 
     @staticmethod
     def accessor(param: Parameter) -> Accessor:
@@ -278,23 +346,24 @@ def render_factory_call(
     prefix: Prefix,
     param: Parameter,
 ) -> ast.Assign:
+    plan = ctx.factory_plans[prefix]
+    fields = ctx.fields_to_columns[prefix]
+
+    def subscript(field: Field) -> ast.Subscript:
+        return ast.Subscript(
+            ast.Name("row", ast.Load()),
+            ast.Constant(fields[field][INDEX]),
+            ast.Load(),
+        )
+
     return ast.Assign(
         [ast.Name(prefix, ast.Store())],
         ast.Call(
             func=ast.Name(param.factory.__name__, ast.Load()),
-            args=[],
+            args=[subscript(field) for field in plan.positional],
             keywords=[
-                ast.keyword(
-                    field,
-                    (
-                        ast.Subscript(
-                            ast.Name("row", ast.Load()),
-                            ast.Constant(column[INDEX]),
-                            ast.Load(),
-                        )
-                    ),
-                )
-                for field, column in ctx.fields_to_columns[prefix].items()
+                ast.keyword(field, subscript(field))
+                for field in plan.keyword
             ],
         ),
     )
