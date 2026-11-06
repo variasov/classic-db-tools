@@ -270,7 +270,14 @@ jobs:
             https://download.oracle.com/otn_software/linux/instantclient/2113000/instantclient-basic-linux.x64-21.13.0.0.0dbru.zip
         run: |
           sudo apt-get update
-          sudo apt-get install -y unzip libaio1t64 || sudo apt-get install -y libaio1
+          sudo apt-get install -y unzip libaio1t64 ||
+            sudo apt-get install -y unzip libaio1
+          # t64-переход Ubuntu: пакет ставит библиотеку как libaio.so.1t64,
+          # а Instant Client ищет libaio.so.1 - добавляем симлинк
+          LIBAIO=$(find /usr/lib -name 'libaio.so.1t64' | head -1)
+          if [ -n "$LIBAIO" ]; then
+            sudo ln -sf "$LIBAIO" "$(dirname "$LIBAIO")/libaio.so.1"
+          fi
           curl -sSLo /tmp/instantclient.zip "$IC_URL"
           sudo unzip -o -q /tmp/instantclient.zip -d /opt/oracle
           echo /opt/oracle/instantclient_21_13 |
