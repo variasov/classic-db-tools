@@ -91,12 +91,18 @@ class TestOracleDBConnectionPool:
         conn = pool.acquire()
         try:
             cursor = conn.cursor()
+            # DDL в Oracle неявно коммитит, поэтому грязное состояние
+            # создает только INSERT
+            cursor.execute('CREATE TABLE "_pool_dirty_test" (id NUMBER)')
             cursor.execute('INSERT INTO "_pool_dirty_test" (id) VALUES (1)')
             cursor.close()
             assert pool.before_release is not None
             reuse = pool.before_release(conn)
             assert reuse is True
         finally:
+            cursor = conn.cursor()
+            cursor.execute('DROP TABLE "_pool_dirty_test"')
+            cursor.close()
             pool.release(conn)
 
 
