@@ -255,8 +255,10 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
+      # cx-oracle 8.3 не ставится на Python 3.12+ (нет wheel, сборка
+      # требует pkg_resources), а его тесты отключены - extra не ставим
       - name: Install dependencies
-        run: uv sync --group dev --extra oracledb --extra cx-oracle
+        run: uv sync --group dev --extra oracledb
 
       - name: Run tests
         run: >-
