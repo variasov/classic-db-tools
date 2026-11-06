@@ -283,7 +283,7 @@ Classic DB Tools поддерживает следующие драйверы:
 | MySQL (С расширениями) | `mysqldb` | `pip install mysqlclient` |
 | MS SQL Server | `pymssql` | `pip install pymssql` |
 | Oracle (новый) | `oracledb` | `pip install oracledb` |
-| Oracle (старый) | `cx_oracle` | `pip install cx_Oracle` |
+| Oracle (старый) | `cx_oracle` | `pip install cx_Oracle` — только Python 3.10, нужен Oracle Instant Client |
 | SQLite | `sqlite3` | Встроен в стандартную библиотеку |
 
 Для каждого драйвера есть встроенный валидатор подключений и обработчик транзакций.

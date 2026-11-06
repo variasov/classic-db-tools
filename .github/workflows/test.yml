@@ -255,14 +255,33 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
-      # cx-oracle 8.3 не ставится на Python 3.12+ (нет wheel, сборка
-      # требует pkg_resources), а его тесты отключены - extra не ставим
+      # cx-oracle 8.3 существует только для Python <= 3.10 (wheel до cp310,
+      # sdist на 3.11+ не собирается). В extra стоит маркер python_version,
+      # поэтому sync проходит на всех версиях матрицы.
       - name: Install dependencies
-        run: uv sync --group dev --extra oracledb
+        run: uv sync --group dev --extra oracledb --extra cx-oracle
 
-      - name: Run tests
-        run: >-
-          uv run pytest
-          tests/backends/test_oracledb.py
-          # tests/backends/test_cx_oracle.py  # Временно отключено
-          -v
+      # cx_Oracle - thick-драйвер, ему нужен Oracle Instant Client
+      # (oracledb работает в thin-режиме, клиент не нужен)
+      - name: Install Oracle Instant Client
+        if: matrix.python-version == '3.10'
+        env:
+          IC_URL: >-
+            https://download.oracle.com/otn_software/linux/instantclient/2113000/instantclient-basic-linux.x64-21.13.0.0.0dbru.zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip libaio1t64 || sudo apt-get install -y libaio1
+          curl -sSLo /tmp/instantclient.zip "$IC_URL"
+          sudo unzip -o -q /tmp/instantclient.zip -d /opt/oracle
+          echo /opt/oracle/instantclient_21_13 |
+            sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
+          sudo ldconfig
+
+      - name: Run oracledb tests
+        run: uv run pytest tests/backends/test_oracledb.py -v
+
+      # cx_Oracle живет только на Python 3.10: на остальных ногах шаг не
+      # запускается вообще - тесты не пропускаются, а не собираются
+      - name: Run cx_oracle tests
+        if: matrix.python-version == '3.10'
+        run: uv run pytest tests/backends/test_cx_oracle.py -v

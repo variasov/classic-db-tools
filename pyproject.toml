@@ -50,7 +50,9 @@ oracledb = [
     "oracledb~=4.0",
 ]
 cx-oracle = [
-    "cx-oracle~=8.3",
+    # wheel-файлы cx_Oracle 8.3 есть только до cp310, sdist на 3.11+
+    # не собирается - на новых Python extra пустой, используйте oracledb
+    "cx-oracle~=8.3; python_version < '3.11'",
 ]
 mysqlclient = [
     "mysqlclient~=2.2",
