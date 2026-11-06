@@ -43,7 +43,7 @@ task = engine.query_from('tasks/get_by_id.sql').one(id=1)
 ```
 
 В директории sql рядом с .py файлом надо разместить 3 файла
-(можно найти в директории tests/sql):
+(другие примеры можно найти в директории tests/sql):
 
 `sql/tasks/ddl.sql`:
 ```sql
@@ -110,11 +110,72 @@ with engine.conn():
 
 Как декоратор:
 ```python
-@engine.conn()
+@engine.conn
 def some_method():
     engine.query('SELECT 1').scalar()
     engine.query('SELECT 1').scalar()
 ```
+
+#### Параметры транзакций
+
+Метод `engine.transaction()` принимает параметр `commit` и произвольные
+параметры транзакции, передаваемые драйверу:
+
+```python
+with engine.transaction(readonly=True, level='serializable'):
+    engine.query('SELECT ...').all()
+```
+
+Поддержка параметров зависит от драйвера:
+
+| Параметр | psycopg | psycopg2 | pymysql/mysqldb | pymssql | oracledb/cx_oracle | sqlite3 |
+|----------|---------|----------|-----------------|---------|--------------------|---------|
+| `level` (уровень изоляции, строкой) | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `readonly` | ✓ | — | — | — | — | — |
+| `deferrable` | ✓ | — | — | — | — | — |
+
+#### Вложенные транзакции
+
+Вызов `transaction()` внутри `transaction()` создаёт SAVEPOINT
+(для sqlite тоже поддерживается):
+
+```python
+with engine.transaction():
+    engine.query('INSERT INTO ...').execute()
+    with engine.transaction():  # SAVEPOINT
+        engine.query('INSERT INTO ...').execute()
+    # при ошибке во внутреннем блоке откатывается только он
+```
+
+Параметры вложенной транзакции должны совпадать с внешней — при расхождении
+будет `AssertionError` (учтите, что `assert` исчезает при запуске
+интерпретатора с `-O`).
+
+#### Текущее соединение (engine.current)
+
+Внутри блоков `conn()` и `transaction()` захваченное соединение доступно
+в `engine.current.conn` (thread-local), а параметры активной транзакции —
+в `engine.current.tx_params`. Вне блока `engine.current.conn` равен None.
+
+#### Жизненный цикл соединений при чтении
+
+`iter()`, `scalars()` и `execute()` ведут себя по-разному внутри и снаружи
+блоков `conn()`/`transaction()`:
+
+- **Внутри блока** используется соединение из блока.
+- **Вне блока** `iter()`/`scalars()` захватывают собственное соединение
+  из пула и держат его до исчерпания строк — используйте `with`:
+
+```python
+with engine.query('SELECT * FROM large_table').iter() as rows:
+    for row in rows:
+        process(row)
+```
+
+- `execute()` вне блока возвращает `DetachedCursor`, у которого доступен
+  только `rowcount`: соединение возвращается в пул сразу после выполнения.
+  Обращение к методам выборки (`fetchone` и пр.) вызовет
+  `CursorOutsideScopeError`.
 
 
 ## Инициализация Engine
@@ -176,6 +237,39 @@ engine = Engine(
   'auto' автоматически выбирает валидатор для драйвера.
   Поддерживаемые драйверы: psycopg, psycopg2, pymysql, mysqldb, pymssql, oracledb, cx_oracle.
 
+### Engine в приложении
+
+Обычно Engine создаётся один раз при старте приложения и используется
+совместно всеми компонентами (пул потокобезопасен).
+
+Метод `engine.close()` закрывает все свободные (idle) соединения пула.
+Захваченные активными блоками `conn()`/`transaction()` соединения остаются
+открытыми и вернутся в пул по выходе. Сам движок после `close()` остаётся
+рабочим — пул откроет новые соединения при необходимости:
+
+```python
+engine.close()  # освободить idle-соединения (например, при остановке приложения)
+```
+
+### Директории шаблонов (templates_dirs)
+
+Параметр `templates_dirs` принимает строку, `pathlib.Path` или список
+таких значений:
+
+```python
+from pathlib import Path
+
+engine = Engine(
+    psycopg, factory,
+    templates_dirs=['sql/common', Path('sql/tenant')],
+)
+```
+
+`.query_from()` ищет файл по директориям в порядке их перечисления до первого
+совпадения. По тем же путям Jinja ищет шаблоны в `{% import %}`,
+`{% include %}` и `{% extends %}` — макросы и фрагменты можно выносить
+в отдельные файлы.
+
 
 ## Поддерживаемые драйверы БД
 
@@ -189,11 +283,14 @@ Classic DB Tools поддерживает следующие драйверы:
 | MySQL (С расширениями) | `mysqldb` | `pip install mysqlclient` |
 | MS SQL Server | `pymssql` | `pip install pymssql` |
 | Oracle (новый) | `oracledb` | `pip install oracledb` |
-| Oracle (старый) | `cx_oracle` | `pip install cx_Oracle` |
+| Oracle (старый) | `cx_oracle` | `pip install cx_Oracle` — только Python 3.10, нужен Oracle Instant Client |
 | SQLite | `sqlite3` | Встроен в стандартную библиотеку |
 
 Для каждого драйвера есть встроенный валидатор подключений и обработчик транзакций.
-При использовании неизвестного драйвера валидация отключается (параметр `validator=None`).
+При использовании драйвера, для которого не зарегистрирована реализация
+Transaction, создание Engine выбросит ValueError с подсказкой о регистрации.
+Для драйверов без встроенного валидатора валидация подключений в пуле
+отключается; отключить валидацию можно и вручную — `validator=None`.
 
 Пример для различных драйверов:
 ```python
@@ -232,7 +329,7 @@ query.execute()
 переданного в параметр template_paths конструктора Engine, в том же порядке,
 в каком пути были переданы, до первого раза, когда файл будет найден.
 
-Также каждый взятый зарос заносится в кеш. Это значит, что загрузка запроса
+Также каждый взятый запрос заносится в кеш. Это значит, что загрузка запроса
 из файла будет происходить лишь единожды.
 
 Также .query_from является ленивым, то есть реальная загрузка запроса
@@ -258,7 +355,7 @@ query.execute()
 Чтобы создать статический запрос через метод .query, нужно передать параметр
 static=True:
 ```python
-query = engine.query('SELECT {{ value }}', static=True)
+query = engine.query('SELECT %(value)s', static=True)
 query.execute(value=1)
 ```
 
@@ -277,7 +374,7 @@ query.execute(value=1)
 Метод .query_from считает динамическими запросами файлы, названия которых
 заканчиваются на `.sql.tmpl`.
 
-Чтобы создать статический запрос через метод .query, нужно передать параметр
+Чтобы создать динамический запрос через метод .query, нужно передать параметр
 static=False:
 ```python
 query = engine.query('SELECT {{ value }}', static=False)
@@ -315,7 +412,7 @@ SELECT %(value)s
 
 Если необходимо отрендерить значение 'как есть', 
 например, если оно было получено из безопасного источника,
-можно применить фильтр safe:
+можно применить фильтр sqlsafe (сработает и стандартный фильтр Jinja safe):
 ```jinja
 SELECT {{ value|sqlsafe }}
 ```
@@ -331,10 +428,9 @@ SELECT * FROM {{ table|identifier }}
 ```sql
 SELECT * FROM experiments."some_table"
 ```
-MS SQL Server использует обратные кавычки:
-```sql
-SELECT * FROM [public].[some_table]
-```
+MS SQL Server использует квадратные скобки — `[public].[some_table]` — такая
+форма не поддерживается. Поддерживаемые символы обрамления: `"` (по умолчанию),
+`` ` `` (MySQL) и `'`.
 
 Изменить это можно в параметре identifier_quote_char 
 конструктора Engine. По умолчанию используются двойные кавычки.
@@ -522,16 +618,18 @@ with engine.transaction():
 - Ошибки валидации подключений
 - Проблемы с пулом подключений
 
-### Получение скомпилированного запроса
+### Получение исходника скомпилированного маппера
 
-Для отладки динамических запросов можно получить сгенерированный SQL через метод `.sources()`:
+Для отладки маппинга объект запроса с назначенным маппером имеет метод
+`.sources()`, возвращающий исходный код скомпилированной функции-маппера:
 
 ```python
 query = engine.query(
     'SELECT * FROM tasks WHERE status = {{ status }}'
 ).map_to(Task)
 
-# Получить текст скомпилированной функции для отладки
+# Выполняет запрос (нужны имена столбцов из курсора)
+# и возвращает исходный код сгенерированной функции-маппера
 print(query.sources())
 ```
 
@@ -547,28 +645,72 @@ print(query.sources())
 pip install classic-db-tools[criteria]
 ```
 
-Затем используйте `traverse` и `contains` макросы в Jinja шаблонах:
+Критерии объявляются как dataclass'ы, унаследованные от `Criteria`:
 
 ```python
-from classic.criteria import And, Eq, Gt
+from dataclasses import dataclass
+from typing import Any
 
-# Создать критерии в Python
-criteria = And(
-    Eq('status', 'active'),
-    Gt('created_at', '2024-01-01')
-)
+from classic.criteria import And, Criteria
 
-# Использовать в запросе
-tasks = engine.query('''
-    SELECT * FROM tasks
-    {% if filters and contains(filters, 'Eq', 'Gt') %}
-    WHERE {{ traverse(filters, translators) }}
-    {% endif %}
-''').all(filters=criteria, translators=my_translators)
+
+@dataclass
+class TitleIs(Criteria[Any]):
+    title: str
+
+
+@dataclass
+class ValueGt(Criteria[Any]):
+    value: int
+
+
+criteria = And(TitleIs('a'), ValueGt(15))
 ```
 
-Функция `traverse` преобразует объекты criteria в SQL WHERE-условие,
-функция `contains` проверяет наличие определённых типов фильтров.
+В шаблоне запроса дерево критериев транслируется в SQL функцией `traverse`.
+Для каждого класса критериев она вызывает одноимённый макрос, который
+получает сам критерий и вставляет его поля через bind-плейсхолдеры:
+
+`items.sql.tmpl`:
+```jinja
+{% import 'macros.sql.tmpl' as macros %}
+SELECT title FROM items
+WHERE {{ traverse(criteria, macros) | safe }}
+ORDER BY id
+```
+
+`macros.sql.tmpl`:
+```jinja
+{% macro TitleIs(c) %}title = {{ c.title }}{% endmacro %}
+{% macro ValueGt(c) %}value > {{ c.value }}{% endmacro %}
+```
+
+```python
+rows = engine.query_from('items.sql.tmpl').all(criteria=criteria)
+```
+
+Функция `contains(criteria, 'ValueGt', ...)` проверяет наличие критериев
+указанных классов в дереве — удобно для условной сборки запроса.
+Каждый узел и лист оборачивается в скобки, поэтому приоритет AND/OR
+соответствует структуре дерева; XOR раскрывается через AND/OR/NOT.
+
+Важные детали интеграции:
+
+- Результат `traverse` выводится через `| safe` — иначе весь WHERE
+  уйдёт в драйвер одним bind-параметром.
+- Макрос называется по имени класса критерия (`TitleIs` → макрос `TitleIs`).
+- Поля критерия внутри макроса (`{{ c.title }}`) биндятся автоматически,
+  каждый вызов макроса получает уникальное имя параметра — повторное
+  использование одного макроса в дереве безопасно. Если имя параметра
+  задаётся явно (`| bind('my_name')`), уникальность — на вашей стороне;
+  после явного bind добавляйте `| sqlsafe`:
+  ```jinja
+  {% set ns = namespace(i=0) %}
+  {% macro TitleIs(c) -%}
+  {%- set ns.i = ns.i + 1 -%}
+  title = {{ c.title | bind('title_is_' ~ ns.i) | sqlsafe }}
+  {%- endmacro %}
+  ```
 
 
 ## Обработка ошибок
@@ -577,8 +719,7 @@ tasks = engine.query('''
 Выбрасывается когда пул подключений исчерпан и превышен таймаут ожидания свободного подключения:
 
 ```python
-from classic.db_tools import Engine, ConnectionPool
-from classic.db_tools.pool import ConnectionLimitError
+from classic.db_tools import Engine, ConnectionLimitError
 
 engine = Engine(
     psycopg,
@@ -652,13 +793,13 @@ CREATE TABLE applications(
 привязок к именам, все делается "вручную".
 
 Чтобы смаппить данные, необходимо указать в запросе label для каждого столбца,
-состоящий из префикса и названия поля, соединенные через _:
+состоящий из префикса и названия поля, соединённых двойным подчёркиванием `__`:
 ```SQL
 SELECT
-    pk      AS SomeObj__id,
-    title   AS SomeObj__name,
-    content AS SomeObj__description
-FROM some_table;
+    pk      AS task__id,
+    title   AS task__name,
+    content AS task__description
+FROM applications;
 ```
 
 Нужно помнить, что SQL - регистронезависим, поэтому нет разницы,
@@ -682,7 +823,8 @@ engine = Engine(
 )
 
 with engine.transaction():
-    task = engine.query_from('example_select.sql').map_to(Task).one(id=1)
+    # get_task.sql содержит SELECT из примера выше с фильтром WHERE pk = %(id)s
+    task = engine.query_from('get_task.sql').map_to(Task).one(id=1)
     print(task)
 ```
 
@@ -771,8 +913,7 @@ engine.query(sql).map_to(
 объекты с каким префиксом он должен вернуть в ответ.
 
 Если подан **params (keyword-аргументы), они будут использованы как конфигурация маппера
-вместо дефолтной. Третий аргумент - маппер (устаревший способ, используйте **params) -
-также поддерживается для обратной совместимости.
+вместо дефолтной.
 
 Дефолтный маппер задается в конструкторе Engine.
 
@@ -810,14 +951,13 @@ mapping = dict(
     status=Value(Status)
 )
 
-pool = ConnectionPool(psycopg, lambda: psycopg.connect(...))
-engine = Engine(psycopg, default_mapping=mapping)
+engine = Engine(psycopg, lambda: psycopg.connect(...), default_mapping=mapping)
 
 with engine.transaction():
     tasks = engine.query('''
     SELECT
         tasks.id AS task__id,
-        tasks.id AS task__title,
+        tasks.title AS task__title,
         statuses.title AS status__title
     FROM tasks
     JOIN statuses ON statuses.task_id = tasks.id
@@ -869,7 +1009,7 @@ with engine.transaction():
     tasks = engine.query('''
     SELECT
         tasks.id AS task__id,
-        tasks.id AS task__title,
+        tasks.title AS task__title,
         statuses.title AS status__title
     FROM tasks
     JOIN statuses ON statuses.task_id = tasks.id
@@ -906,7 +1046,90 @@ mapper = dict(
 и порядка столбцов в запросе.
 
 Для облегчения отладки объект запроса с назначенным маппером имеет метод 
-.sources(), возвращающий текст скомпилированный функции.
+.sources(), возвращающий текст скомпилированной функции.
+
+### Продвинутый маппинг
+
+#### Вложенные объекты-значения (VO)
+
+Если поле `Assign`-отношения присутствует в сигнатуре фабрики, объект-значение
+собирается первым и передаётся **аргументом конструктора** — так собираются
+обязательные поля-VO и frozen dataclass'ы:
+
+```python
+@dataclass(frozen=True)
+class Period:
+    start: date
+    end: date
+
+
+@dataclass(frozen=True)
+class Loan:
+    id: int
+    amount: int
+    period: Period
+
+
+mapping = dict(
+    loan=Entity(Loan, 'id', period=Assign('period')),
+    period=Value(Period),
+)
+# loan = Loan(row[loan__id], Period(row[period__start], row[period__end]), row[loan__amount])
+```
+
+`Assign` для полей вне сигнатуры (например, `field(init=False)`) по-прежнему
+применяется присваиванием после конструирования.
+
+#### Фабрики-функции
+
+Фабрикой может быть не только класс, но и функция — отношения к её
+результату применяются через атрибуты. Если сигнатура функции недоступна
+(или содержит keyword-only/`*args`/`**kw`), поля передаются по имени.
+
+#### Коллекции и ограничения
+
+- `Append` заполняет список, `Add` — множество. Дочерние объекты-`Entity`
+  дедуплицируются по id.
+- Две коллекции **объектов-значений** в одном JOIN дают дубли детей
+  (декартово произведение строк не дедуплицируется) — выносите такие
+  коллекции в отдельные запросы.
+- Метод `all()` дедуплицирует корневые Entity по identity, сохраняя порядок
+  первого появления, поэтому несортированные строки не порождают дублей
+  корня. Тем не менее `ORDER BY` по корню рекомендован: для `iter()` он
+  обязателен (потоковая выдача), а для детей сохраняет стабильный порядок.
+
+#### Составные ключи
+
+Entity поддерживает составной идентификатор — кортеж полей:
+
+```python
+mapping = dict(
+    task=Entity(Task, ('id', 'version')),
+)
+```
+
+#### Пагинация по корням с коллекцией одним запросом
+
+Обычный `LIMIT` по строкам JOIN обрезал бы детей. Рецепт — выбрать страницу
+корней в CTE и присоединить детей к ней:
+
+```sql
+WITH roots AS (
+    SELECT l.id FROM loans l
+    WHERE {{ traverse(criteria, macros) | safe }}
+    ORDER BY l.id
+    LIMIT {{ limit }} OFFSET {{ offset }}
+)
+SELECT
+    l.id AS loan__id,
+    l.amount AS loan__amount,
+    e.title AS extension__title
+FROM roots
+JOIN loans l ON l.id = roots.id
+LEFT JOIN loan_extensions e ON e.loan_id = roots.id
+ORDER BY l.id, e.position
+```
+
 
 ## Лучшие практики и рекомендации
 
@@ -958,8 +1181,9 @@ pool_kwargs = {
 ```python
 # ✅ Хорошо - атомарная операция
 with engine.transaction():
-    task = engine.query_from('create_task.sql').execute(title='New Task')
-    engine.query_from('assign_to_user.sql').execute(task_id=task.id, user_id=user_id)
+    # create_task.sql содержит INSERT ... RETURNING id
+    task_id = engine.query_from('create_task.sql').scalar(title='New Task')
+    engine.query_from('assign_to_user.sql').execute(task_id=task_id, user_id=user_id)
     # Коммитится только если обе операции успешны
 ```
 

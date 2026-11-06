@@ -1,0 +1,59 @@
+import logging
+import os
+import threading
+from collections.abc import Sequence
+
+from .template import StaticTemplate
+
+
+class StaticTemplatesCache:
+    """
+    Кеш со статичными шаблонами.
+
+    Используется под капотом Engine, снаружи недоступен.
+    """
+
+    def __init__(
+        self,
+        logger: logging.Logger,
+        templates_paths: Sequence[str | os.PathLike[str]],
+    ) -> None:
+        self.logger = logger
+        self.cache: dict[str, StaticTemplate] = {}
+        self.templates_paths = templates_paths
+        self.lock = threading.RLock()
+
+    def get_or_create(
+        self,
+        filename: str | None = None,
+        content: str | None = None,
+    ) -> StaticTemplate:
+        if filename:
+            key = filename
+        elif content:
+            key = content
+        else:
+            raise NotImplementedError
+
+        with self.lock:
+            obj = self.cache.get(key)
+            if obj is None:
+                if filename:
+                    for path in self.templates_paths:
+                        filepath = os.path.join(path, filename)
+                        if os.path.exists(filepath):
+                            obj = StaticTemplate(self.logger, filepath=filepath)
+                            break
+                    if obj is None:
+                        raise FileNotFoundError(
+                            f"File {filename} does not exist in "
+                            f"{self.templates_paths} dirs"
+                        )
+                elif content:
+                    obj = StaticTemplate(self.logger, content=content)
+                else:
+                    raise NotImplementedError
+
+                self.cache[key] = obj
+
+        return obj

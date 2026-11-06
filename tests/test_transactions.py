@@ -1,48 +1,52 @@
+import sqlite3
+from pathlib import Path
+from typing import Any
+
 import pytest
 
-pytestmark = pytest.mark.usefixtures('data')
+from classic.db_tools import Engine
+
+pytestmark = pytest.mark.usefixtures("data")
 
 
 class TestTransaction:
-
-    def test_commits_on_success(self, engine):
-        engine.query_from('insert_item.sql').execute(t='tc_commit', v=1)
-        row = engine.query_from('select_item_by_title.sql').one(t='tc_commit')
+    def test_commits_on_success(self, engine: Engine[Any]):
+        engine.query_from("insert_item.sql").execute(t="tc_commit", v=1)
+        row = engine.query_from("select_item_by_title.sql").one(t="tc_commit")
         assert row is not None
 
-    def test_rollback_on_exception(self, engine):
+    def test_rollback_on_exception(self, engine: Engine[Any]):
         try:
             with engine.transaction():
-                engine.query_from('insert_item.sql').execute(
-                    t='tc_rollback', v=1,
+                engine.query_from("insert_item.sql").execute(
+                    t="tc_rollback",
+                    v=1,
                 )
-                raise RuntimeError('boom')
+                raise RuntimeError("boom")
         except RuntimeError:
             pass
-        row = engine.query_from(
-            'select_item_by_title.sql').one(t='tc_rollback')
+        row = engine.query_from("select_item_by_title.sql").one(t="tc_rollback")
         assert row is None
 
-    def test_commit_false_rolls_back(self, engine):
+    def test_commit_false_rolls_back(self, engine: Engine[Any]):
         with engine.transaction(commit=False):
-            engine.query_from('insert_item.sql').execute(t='tc_nocommit', v=1)
-        row = engine.query_from(
-            'select_item_by_title.sql').one(t='tc_nocommit')
+            engine.query_from("insert_item.sql").execute(t="tc_nocommit", v=1)
+        row = engine.query_from("select_item_by_title.sql").one(t="tc_nocommit")
         assert row is None
 
-    def test_as_decorator(self, engine):
+    def test_as_decorator(self, engine: Engine[Any]):
         call_count = 0
 
         @engine.transaction
         def work():
             nonlocal call_count
             call_count += 1
-            engine.query('SELECT 1', static=True).execute()
+            engine.query("SELECT 1", static=True).execute()
 
         work()
         assert call_count == 1
 
-    def test_decorator_preserves_return_value(self, engine):
+    def test_decorator_preserves_return_value(self, engine: Engine[Any]):
 
         @engine.transaction
         def work():
@@ -52,149 +56,244 @@ class TestTransaction:
 
 
 class TestNestedTransaction:
-
-    def test_nested_commit_all(self, engine):
+    def test_nested_commit_all(self, engine: Engine[Any]):
         with engine.transaction():
-            engine.query_from('insert_item.sql').execute(
-                t='nest_outer', v=1,
+            engine.query_from("insert_item.sql").execute(
+                t="nest_outer",
+                v=1,
             )
             with engine.transaction():
-                engine.query_from('insert_item.sql').execute(
-                    t='nest_inner', v=2,
+                engine.query_from("insert_item.sql").execute(
+                    t="nest_inner",
+                    v=2,
                 )
-        row_out = engine.query_from(
-            'select_item_by_title.sql').one(t='nest_outer')
-        row_in = engine.query_from(
-            'select_item_by_title.sql').one(t='nest_inner')
+        row_out = engine.query_from("select_item_by_title.sql").one(
+            t="nest_outer"
+        )
+        row_in = engine.query_from("select_item_by_title.sql").one(
+            t="nest_inner"
+        )
         assert row_out is not None
         assert row_in is not None
 
-    def test_inner_rollback_does_not_affect_outer(self, engine):
+    def test_inner_rollback_does_not_affect_outer(self, engine: Engine[Any]):
         with engine.transaction():
-            engine.query_from('insert_item.sql').execute(t='ni_outer', v=1)
+            engine.query_from("insert_item.sql").execute(t="ni_outer", v=1)
             try:
                 with engine.transaction():
-                    engine.query_from('insert_item.sql').execute(
-                        t='ni_inner', v=2,
+                    engine.query_from("insert_item.sql").execute(
+                        t="ni_inner",
+                        v=2,
                     )
-                    raise RuntimeError('inner fail')
+                    raise RuntimeError("inner fail")
             except RuntimeError:
                 pass
-            row_out = engine.query_from(
-                'select_item_by_title.sql').one(t='ni_outer')
+            row_out = engine.query_from("select_item_by_title.sql").one(
+                t="ni_outer"
+            )
             assert row_out is not None
-        row_in = engine.query_from(
-            'select_item_by_title.sql').one(t='ni_inner')
+        row_in = engine.query_from("select_item_by_title.sql").one(t="ni_inner")
         assert row_in is None
 
-    def test_outer_rollback_rolls_back_inner_too(self, engine):
+    def test_outer_rollback_rolls_back_inner_too(self, engine: Engine[Any]):
         try:
             with engine.transaction():
-                engine.query_from('insert_item.sql').execute(
-                    t='no_outer', v=1,
+                engine.query_from("insert_item.sql").execute(
+                    t="no_outer",
+                    v=1,
                 )
                 with engine.transaction():
-                    engine.query_from('insert_item.sql').execute(
-                        t='no_inner', v=2,
+                    engine.query_from("insert_item.sql").execute(
+                        t="no_inner",
+                        v=2,
                     )
-                raise RuntimeError('outer fail')
+                raise RuntimeError("outer fail")
         except RuntimeError:
             pass
-        row_out = engine.query_from(
-            'select_item_by_title.sql').one(t='no_outer')
-        row_in = engine.query_from(
-            'select_item_by_title.sql').one(t='no_inner')
+        row_out = engine.query_from("select_item_by_title.sql").one(
+            t="no_outer"
+        )
+        row_in = engine.query_from("select_item_by_title.sql").one(t="no_inner")
         assert row_out is None
         assert row_in is None
 
-    def test_work_after_inner_rollback(self, engine):
+    def test_work_after_inner_rollback(self, engine: Engine[Any]):
         with engine.transaction():
-            engine.query_from('insert_item.sql').execute(t='nw_outer', v=1)
+            engine.query_from("insert_item.sql").execute(t="nw_outer", v=1)
             try:
                 with engine.transaction():
-                    engine.query_from('insert_item.sql').execute(
-                        t='nw_inner', v=2,
+                    engine.query_from("insert_item.sql").execute(
+                        t="nw_inner",
+                        v=2,
                     )
-                    raise RuntimeError('inner fail')
+                    raise RuntimeError("inner fail")
             except RuntimeError:
                 pass
-            engine.query_from('insert_item.sql').execute(
-                t='nw_after', v=3,
+            engine.query_from("insert_item.sql").execute(
+                t="nw_after",
+                v=3,
             )
-        row_outer = engine.query_from(
-            'select_item_by_title.sql').one(t='nw_outer')
-        row_after = engine.query_from(
-            'select_item_by_title.sql').one(t='nw_after')
-        row_inner = engine.query_from(
-            'select_item_by_title.sql').one(t='nw_inner')
+        row_outer = engine.query_from("select_item_by_title.sql").one(
+            t="nw_outer"
+        )
+        row_after = engine.query_from("select_item_by_title.sql").one(
+            t="nw_after"
+        )
+        row_inner = engine.query_from("select_item_by_title.sql").one(
+            t="nw_inner"
+        )
         assert row_outer is not None
         assert row_after is not None
         assert row_inner is None
 
-    def test_nested_decorator(self, engine):
+    def test_nested_decorator(self, engine: Engine[Any]):
 
         @engine.transaction
         def outer():
-            engine.query_from('insert_item.sql').execute(t='nd_outer', v=1)
+            engine.query_from("insert_item.sql").execute(t="nd_outer", v=1)
 
             @engine.transaction
             def inner():
-                engine.query_from('insert_item.sql').execute(
-                    t='nd_inner', v=2,
+                engine.query_from("insert_item.sql").execute(
+                    t="nd_inner",
+                    v=2,
                 )
 
             inner()
 
         outer()
-        assert engine.query_from(
-            'select_item_by_title.sql').one(t='nd_outer') is not None
-        assert engine.query_from(
-            'select_item_by_title.sql').one(t='nd_inner') is not None
+        assert (
+            engine.query_from("select_item_by_title.sql").one(t="nd_outer")
+            is not None
+        )
+        assert (
+            engine.query_from("select_item_by_title.sql").one(t="nd_inner")
+            is not None
+        )
 
-    def test_nested_decorator_rollback(self, engine):
+    def test_nested_decorator_rollback(self, engine: Engine[Any]):
 
         @engine.transaction
         def outer():
-            engine.query_from('insert_item.sql').execute(
-                t='ndr_outer', v=1,
+            engine.query_from("insert_item.sql").execute(
+                t="ndr_outer",
+                v=1,
             )
-            raise RuntimeError('outer fail')
+            raise RuntimeError("outer fail")
 
-        pytest.raises(RuntimeError, outer)
-        assert engine.query_from(
-            'select_item_by_title.sql').one(t='ndr_outer') is None
+        with pytest.raises(RuntimeError):
+            outer()
+        assert (
+            engine.query_from("select_item_by_title.sql").one(t="ndr_outer")
+            is None
+        )
 
 
 class TestConn:
-
-    def test_context_manager(self, engine):
+    def test_context_manager(self, engine: Engine[Any]):
         with engine.conn():
-            result = engine.query('SELECT 2 AS b', static=True).scalar()
+            result = engine.query("SELECT 2 AS b", static=True).scalar()
         assert result == 2
 
-    def test_as_decorator(self, engine):
+    def test_as_decorator(self, engine: Engine[Any]):
         call_count = 0
 
         @engine.conn
         def work():
             nonlocal call_count
             call_count += 1
-            engine.query('SELECT 3', static=True).execute()
+            engine.query("SELECT 3", static=True).execute()
 
         work()
         assert call_count == 1
 
-    def test_multiple_queries_in_conn(self, engine):
+    def test_multiple_queries_in_conn(self, engine: Engine[Any]):
         with engine.conn():
-            engine.query_from('insert_item.sql').execute(t='cm_multi', v=1)
-            row = engine.query_from(
-                'select_item_by_title.sql').one(t='cm_multi')
+            engine.query_from("insert_item.sql").execute(t="cm_multi", v=1)
+            row = engine.query_from("select_item_by_title.sql").one(
+                t="cm_multi"
+            )
             assert row is not None
 
-    def test_decorator_preserves_return_value(self, engine):
+    def test_decorator_preserves_return_value(self, engine: Engine[Any]):
 
         @engine.conn
         def work():
             return 99
 
         assert work() == 99
+
+
+class TestCommitFailure:
+    @pytest.fixture
+    def fk_engine(self, tmp_path: Path) -> Engine[Any]:
+        path = str(tmp_path / "fk.db")
+
+        def connect() -> sqlite3.Connection:
+            conn = sqlite3.connect(path)
+            conn.execute("PRAGMA foreign_keys = ON")
+            return conn
+
+        eng = Engine(sqlite3, connect)
+        with eng.transaction():
+            eng.query(
+                "CREATE TABLE parent (id INTEGER PRIMARY KEY)",
+                static=True,
+            ).execute()
+            eng.query(
+                "CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id "
+                "INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY "
+                "DEFERRED)",
+                static=True,
+            ).execute()
+        return eng
+
+    @staticmethod
+    def _insert_child(eng: Engine[Any], id_: int, parent_id: int) -> None:
+        eng.query(
+            "INSERT INTO child (id, parent_id) VALUES (:i, :p)",
+            static=True,
+        ).execute(i=id_, p=parent_id)
+
+    @staticmethod
+    def _count(eng: Engine[Any]) -> int:
+        return eng.query(
+            "SELECT count(*) FROM child",
+            static=True,
+        ).scalar()
+
+    def test_commit_error_propagates(self, fk_engine: Engine[Any]):
+        with pytest.raises(sqlite3.IntegrityError):
+            with fk_engine.transaction():
+                self._insert_child(fk_engine, 1, 999)
+
+        assert self._count(fk_engine) == 0
+
+    def test_engine_usable_after_failure(self, fk_engine: Engine[Any]):
+        with pytest.raises(sqlite3.IntegrityError):
+            with fk_engine.transaction():
+                self._insert_child(fk_engine, 1, 999)
+
+        with fk_engine.transaction():
+            fk_engine.query(
+                "INSERT INTO parent (id) VALUES (1)",
+                static=True,
+            ).execute()
+            self._insert_child(fk_engine, 1, 1)
+
+        assert self._count(fk_engine) == 1
+
+    def test_failure_inside_outer_conn(self, fk_engine: Engine[Any]):
+        with fk_engine.conn():
+            with pytest.raises(sqlite3.IntegrityError):
+                with fk_engine.transaction():
+                    self._insert_child(fk_engine, 1, 999)
+
+            with fk_engine.transaction():
+                fk_engine.query(
+                    "INSERT INTO parent (id) VALUES (1)",
+                    static=True,
+                ).execute()
+                self._insert_child(fk_engine, 2, 1)
+
+            assert self._count(fk_engine) == 1

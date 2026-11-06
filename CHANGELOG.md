@@ -1,5 +1,23 @@
 # Changelog
 
+## v3.3.0 (2026-08-12)
+
+### Исправлено
+
+- **Autocommit в бэкендах**: исправлена установка autocommit для psycopg, psycopg2, pymysql, mysqldb, pymssql, oracledb, cx_oracle
+- **Типизация бэкендов**: backend-модули приведены к общим протоколам; `types.py` переименован в `dbapi.py`
+- **CI/CD**: автоматическая публикация в PyPI через GitHub Actions; тест cx_Oracle временно отключён
+
+---
+
+## v3.2.0 (2026-07-31)
+
+### Добавлено
+
+- **Новые драйверы**: поддержка `pymysql`, `mysqlclient (mysqldb)`, `psycopg2`, `pymssql`, `oracledb` и `cx_Oracle` — реализации транзакций и валидаторов подключений для каждого
+
+---
+
 ## v3.1.0 (2026-07-31)
 
 ### Добавлено
@@ -26,7 +44,7 @@
 - **DynamicTemplatesCache / StaticTemplatesCache**: новый механизм кеширования шаблонов через `RLock`
 - **Добавлены докстринги** ко всем публичным классам и методам
 - **Удалены** устаревшие модули: `doublewrap.py`, `dynamic/factory.py`, `static/factory.py`, `params_styles.py`, `poolvalidators.py`, `scoped_connection.py`, `exceptions.py`
-- **Тесты**: переписаны тесты транзакций, маппинга (obj, dict, typed-dict), примеров; добавлены тесты `test_mapper_cache.py`
+- **Тесты**: переписаны тесты транзакций, маппинга (obj, dict, typed-dict), примеров
 - **README**: полностью обновлён (добавлены методы `.scalars()`, `scalar(raising=True)`, `engine.conn()` как декоратор, `map_to(**params)`)
 - **AGENTS.md**: добавлен файл конфигурации для opencode
 - Зависимости: обновлён `pyproject.toml` (Python 3.10+, frozendict)

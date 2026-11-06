@@ -7,7 +7,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'classic-db-tools'
-version = '3.3.0'
+version = '4.0.0'
 authors = [
     {name = "Sergey Variasov", email = "variasov@gmail.com"},
 ]
@@ -36,18 +36,23 @@ dependencies = [
 Homepage = "https://github.com/variasov/classic-db-tools"
 
 [tool.setuptools.packages.find]
-where = ['sources']
+where = ['src']
 namespaces = true
+
+[tool.setuptools.package-data]
+"classic.db_tools" = ["py.typed"]
 
 [project.optional-dependencies]
 criteria = [
-    "classic-criteria~=0.1",
+    "classic-criteria~=1.0",
 ]
 oracledb = [
     "oracledb~=4.0",
 ]
 cx-oracle = [
-    "cx-oracle~=8.3",
+    # wheel-файлы cx_Oracle 8.3 есть только до cp310, sdist на 3.11+
+    # не собирается - на новых Python extra пустой, используйте oracledb
+    "cx-oracle~=8.3; python_version < '3.11'",
 ]
 mysqlclient = [
     "mysqlclient~=2.2",
@@ -68,7 +73,168 @@ pymysql = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.4",
-    "pytest==9.0.2",
-    "classic-criteria==0.2.1",
+    "pyright[nodejs]~=1.1.414",
+    "pytest~=9.0.2",
+    "pytest-cov~=7.1",
+    "ruff~=0.15.4",
+    "vulture~=2.16",
+    "mutmut~=3.8; sys_platform != 'win32'",
+    "classic-criteria~=1.0",
+    "psycopg[binary]~=3.3",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.pyright]
+include = ["src", "tests"]
+exclude = [
+    "**/__pycache__",
+    "**/.pytest_cache",
+    ".venv",
+    "mutants",
+    # the cx_Oracle package cannot be installed on Python 3.11+
+    "src/classic/db_tools/backends/cx_oracle.py",
+    "tests/backends/test_cx_oracle.py",
+    # драйверы не ставятся в dev-окружение: без модулей протокол DBModule
+    # для них не проверить (проверяются в CI с соответствующим extra)
+    "src/classic/db_tools/backends/oracledb.py",
+    "src/classic/db_tools/backends/pymssql.py",
+]
+# Всегда использовать окружение проекта, а не активное VIRTUAL_ENV
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = "none"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportPrivateUsage = "none"
+extraPaths = ["."]
+# Тесты опираются на нетипизированные драйверные объекты и моки;
+# аннотации параметров в тестах опциональны (как и в ruff-конфиге)
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportUnknownParameterType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportMissingParameterType = "none"
+reportMissingImports = "none"
+
+[tool.ruff]
+extend-exclude = ["mutants"]
+target-version = "py310"
+line-length = 80
+
+[tool.ruff.format]
+exclude = ["*.md"]  # ruff would reformat python snippets in README
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D203",     # keeps D211: no blank line before class docstring
+    "D213",     # keeps D212: multi-line summary on first line
+    "EM",       # error-message style is overly prescriptive
+    "TRY003",   # long exception messages are an API concern
+    "RUF002",   # docstrings are in Russian: Cyrillic letters are intended
+    "RUF003",   # comments are in Russian: Cyrillic letters are intended
+    "CPY001",   # no copyright headers in this project
+    "COM812",   # conflicts with the ruff formatter
+    "FBT001",   # boolean positional parameters are public API
+    "FBT002",   # boolean positional defaults are public API
+    "FBT003",   # boolean positional values in calls follow public API
+    "ANN401",   # Any is deliberate: driver rows, query params, driver args
+    "PLR0913",  # Engine/ConnectionPool signatures are public API
+    "S102",     # exec is used by the mapper code generator
+    "S704",     # Markup is used deliberately for SQL-safe fragments
+    "TRY002",  # raised exception types are public behavior
+    "TRY004",   # ValueError -> TypeError would alter public behavior
+    "TRY301",   # raise inside try is intentional in transaction code/tests
+    "B904",     # exception chaining would alter traceback behavior
+    "C901",     # complexity of existing algorithms is accepted
+    "PLR0911",  # many returns in criteria translation are intentional
+    "PLR0912",  # many branches in existing algorithms are accepted
+    "PTH",      # template paths are str/PathLike; kept as is
+    "PGH003",   # blanket type: ignore is handled in the typing step (L5)
+    "SIM105",   # try/except ImportError/cleanup is kept explicit
+    "SIM117",   # nested with kept for readability in tests
+    "D1",       # TEMPORARY: removed in the docstrings step
+    "D2",       # TEMPORARY: removed in the docstrings step
+    "D4",       # TEMPORARY: removed in the docstrings step
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/classic/db_tools/backends/*.py" = [
+    "BLE001",   # connection validators: any error means a broken connection
+]
+"src/classic/db_tools/conn_validator.py" = [
+    "BLE001",   # connection validators: any error means a broken connection
+]
+"src/classic/db_tools/pool.py" = [
+    "BLE001",   # close(): a broken connection must not stop closing the rest
+]
+"src/classic/db_tools/detached_cursor.py" = [
+    "ARG002",   # arguments of cursor protocol stubs that always raise
+]
+"src/classic/db_tools/engine.py" = [
+    "S101",     # asserts are internal invariants; changing alters errors
+]
+"src/classic/db_tools/transaction.py" = [
+    "S101",     # asserts are internal invariants; changing alters errors
+]
+"src/classic/db_tools/templates/**/*.py" = [
+    "S101",     # asserts are internal invariants; changing alters errors
+]
+"tests/**" = [
+    "ANN",      # test annotations are optional
+    "ARG001",   # fixtures requested only for their side effects
+    "ARG002",   # fixtures requested only for their side effects
+    "ARG005",   # lambdas with a fixed callback signature
+    "S101",     # `assert` is idiomatic in pytest
+    "SLF001",   # tests access private members
+    "PLR2004",  # magic values are acceptable in assertions
+    "INP001",   # tests are not a package (no tests/__init__.py)
+    "S608",     # tests build SQL from trusted constants
+    "S108",     # tests use fake /tmp paths, nothing is written there
+    "PLC0415",  # local imports in tests are intentional
+]
+"src/classic/db_tools/backends/__init__.py" = [
+    "F401",     # re-exports of optional driver backends (public API)
+]
+"tests/backends/test_*.py" = [
+    "E402",     # imports follow pytest.importorskip on purpose
+    "N816",     # cx_Oracle is the real driver module name
+    "E501",     # long SQL strings in driver tests
+]
+
+[tool.vulture]
+paths = ["src", "tests"]
+exclude = ["mutants"]
+min_confidence = 60
+ignore_names = [
+    # public API classes/types exported for users, not used inside the package
+    "*Transaction",
+    "PsycopgTxParams",
+    "Psycopg2Connection",
+    "COLUMN",
+    # protocol / override parameters and attributes (signature is fixed)
+    "autocommit",
+    "operation",
+    "seq_of_parameters",
+    "size",
+    "exc_type",
+    "exc_value",
+    "tb",
+    # called by Jinja2
+    "filter_stream",
+    # pytest machinery
+    "pytestmark",
+    "schema",
+    "min_id",
+    "_setup_table",
+    "_setup_tables",
+]
+
+[tool.mutmut]
+source_paths = ["src"]
+pytest_add_cli_args = ["-p", "no:cacheprovider"]

@@ -1,0 +1,59 @@
+import logging
+from collections.abc import Sequence
+from typing import Any
+
+import jinja2
+
+from classic.db_tools.dbapi import Cursor
+from classic.db_tools.templates.template import Template
+
+from .renderer import Renderer
+
+
+class DynamicTemplate(Template):
+    """
+    Динамический SQL-шаблон.
+
+    Используется под капотом Query и MapperQuery, снаружи недоступен.
+    """
+
+    def __init__(
+        self,
+        logger: logging.Logger,
+        renderer: Renderer,
+        template: jinja2.Template,
+        param_style: str,
+    ) -> None:
+        self.logger = logger
+        self.renderer = renderer
+        self.template = template
+        self.param_style = param_style
+
+    def execute(
+        self,
+        cursor: Cursor[Any],
+        params: dict[str, Any],
+    ) -> Cursor[Any]:
+        sql, ordered_params = self.renderer.prepare_query(
+            self.template,
+            params,
+            self.param_style,
+        )
+        self.logger.debug(sql)
+        cursor.execute(sql, ordered_params)
+        return cursor
+
+    def executemany(
+        self,
+        cursor: Cursor[Any],
+        params: Sequence[dict[str, Any]],
+    ) -> Cursor[Any]:
+        for param in params:
+            sql, ordered_params = self.renderer.prepare_query(
+                self.template,
+                param,
+                self.param_style,
+            )
+            self.logger.debug(sql)
+            cursor.execute(sql, ordered_params)
+        return cursor

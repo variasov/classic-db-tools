@@ -1,0 +1,2 @@
+{% import 'criteria/macros.sql.tmpl' as macros %}
+SELECT title FROM items WHERE {{ traverse(criteria, macros) | safe }} ORDER BY id
