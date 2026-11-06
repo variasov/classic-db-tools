@@ -33,8 +33,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
+      # Основной набор работает на sqlite3 in-memory; тесты DB-бэкендов
+      # проверяются в отдельных джобах ниже (dev-группа ставит psycopg
+      # для pyright, поэтому без --ignore тесты PostgreSQL падали бы
+      # здесь без сервера)
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: uv run pytest tests/ -v --ignore=tests/backends
+
+      - name: Run sqlite3 backend tests
+        run: uv run pytest tests/backends/test_sqlite3.py -v
 
 
   test-postgresql:
