@@ -12,12 +12,6 @@ Python library for SQL queries as Jinja2 templates. Targets multiple DB drivers 
 - `uv run vulture` — dead code check
 - `uv build` — build package
 
-Note: до выхода classic-criteria 1.0 на PyPI `uv sync` не резолвит
-зависимости — поставьте её из соседнего клона:
-`uv pip install -e ../classic-criteria --no-deps`
-и сам проект: `uv pip install -e . --no-deps` (остальные зависимости —
-`uv pip install "Jinja2~=3.1" "frozendict~=2.4" "pyright[nodejs]" pytest ruff vulture "psycopg[binary]"`).
-
 ## Project layout
 
 ```
